@@ -31,10 +31,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/inorbit-ai/inorbit-kuka-connector"
-Documentation = "https://github.com/inorbit-ai/inorbit-kuka-connector#readme"
-Repository = "https://github.com/inorbit-ai/inorbit-kuka-connector"
-Issues = "https://github.com/inorbit-ai/inorbit-kuka-connector/issues"
+Homepage = "https://github.com/mappalink/inorbit-kuka-connector"
+Documentation = "https://github.com/mappalink/inorbit-kuka-connector#readme"
+Repository = "https://github.com/mappalink/inorbit-kuka-connector"
+Issues = "https://github.com/mappalink/inorbit-kuka-connector/issues"
 
 [project.optional-dependencies]
 dev = [
