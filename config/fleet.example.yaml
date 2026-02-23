@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 InOrbit, Inc.
+#
+# SPDX-License-Identifier: MIT
+
 common:
   location_tz: Europe/Amsterdam
   connector_type: KukaAMR
