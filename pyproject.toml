@@ -1,0 +1,99 @@
+# SPDX-FileCopyrightText: 2026 InOrbit, Inc.
+#
+# SPDX-License-Identifier: MIT
+
+[project]
+name = "inorbit-kuka-connector"
+version = "0.1.0"
+description = "InOrbit Edge connector for KUKA KMP 600P AMRs via KUKA.AMR Fleet"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [
+    { name = "InOrbit, Inc.", email = "support@inorbit.ai" },
+]
+maintainers = [
+    { name = "InOrbit, Inc.", email = "support@inorbit.ai" },
+]
+keywords = ["inorbit", "connector", "edge-connector", "robotics", "robops", "kuka"]
+classifiers = [
+    "Topic :: Scientific/Engineering",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "inorbit-connector[system-stats]~=2.2.0",
+    "httpx>=0.28,<0.29",
+    "pydantic>=2.11,<3",
+    "pydantic-settings>=2.11,<3",
+]
+
+[project.urls]
+Homepage = "https://github.com/inorbit-ai/inorbit-kuka-connector"
+Documentation = "https://github.com/inorbit-ai/inorbit-kuka-connector#readme"
+Repository = "https://github.com/inorbit-ai/inorbit-kuka-connector"
+Issues = "https://github.com/inorbit-ai/inorbit-kuka-connector/issues"
+
+[project.optional-dependencies]
+dev = [
+    "coverage~=7.11",
+    "pytest~=8.4",
+    "pytest-asyncio~=1.2",
+    "pytest-httpx~=0.35",
+    "tox~=4.32",
+    "tox-uv~=1.29",
+    "colorlog~=6.10.1",
+    "ruff>=0.14.7",
+    "bump-my-version~=1.2.4",
+]
+
+[project.scripts]
+inorbit-kuka-connector = "inorbit_kuka_connector.inorbit_kuka_connector:start"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["inorbit_kuka_connector"]
+
+[tool.coverage.run]
+source = ["inorbit_kuka_connector/"]
+
+[tool.coverage.report]
+fail_under = 0
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.tox]
+env_list = ["py312"]
+
+[tool.tox.gh]
+python = { "3.12" = "py312", "3.13" = "py313" }
+
+[tool.tox.env_run_base]
+extras = ["dev"]
+commands = [
+    [
+        "ruff",
+        "check",
+    ],
+    [
+        "coverage",
+        "run",
+        "-m",
+        "pytest",
+    ],
+    [
+        "coverage",
+        "html",
+        "-d",
+        "{envlogdir}/coverage",
+    ],
+]

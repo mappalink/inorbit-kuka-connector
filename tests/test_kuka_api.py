@@ -1,0 +1,152 @@
+# SPDX-FileCopyrightText: 2026 InOrbit, Inc.
+#
+# SPDX-License-Identifier: MIT
+
+"""Tests for inorbit_kuka_connector.src.kuka_api using pytest-httpx."""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+import pytest_asyncio
+
+from inorbit_kuka_connector.src.kuka_api import KukaFleetApi
+
+
+BASE_URL = "http://kuka-fleet:5000"
+
+
+@pytest.fixture()
+def api():
+    return KukaFleetApi(base_url=BASE_URL, username="admin", password="secret")
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _cleanup_api(api):
+    yield
+    await api.close()
+
+
+# -- Login -----------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_login_sets_token(api, httpx_mock):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/login",
+        json={"data": {"token": "jwt-abc-123"}},
+    )
+    await api.login()
+    assert api._token == "jwt-abc-123"
+    assert api._client.headers["Authorization"] == "jwt-abc-123"
+
+
+# -- Read endpoints --------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_robot_query(api, httpx_mock):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/robotQuery",
+        json={"success": True, "data": [{"x": "28247.0", "y": "12001.0"}]},
+    )
+    result = await api.robot_query("1")
+    assert result["success"] is True
+    assert result["data"][0]["x"] == "28247.0"
+
+    req = httpx_mock.get_request()
+    assert json.loads(req.content) == {"robotId": "1"}
+
+
+@pytest.mark.asyncio
+async def test_robot_query_all(api, httpx_mock):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/robotQuery",
+        json={"success": True, "data": []},
+    )
+    await api.robot_query()
+
+    req = httpx_mock.get_request()
+    assert req.content == b"{}"
+
+
+# -- Write endpoints -------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_robot_move(api, httpx_mock):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/robotMove",
+        json={"success": True},
+    )
+    result = await api.robot_move("1", "HEAL-002-40")
+    assert result["success"] is True
+
+    req = httpx_mock.get_request()
+    assert json.loads(req.content) == {"robotId": "1", "nodeCode": "HEAL-002-40"}
+
+
+@pytest.mark.asyncio
+async def test_robot_lift(api, httpx_mock):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/robotLift",
+        json={"success": True},
+    )
+    result = await api.robot_lift("1", "C001")
+    assert result["success"] is True
+
+    req = httpx_mock.get_request()
+    assert json.loads(req.content) == {"robotId": "1", "containerCode": "C001"}
+
+
+@pytest.mark.asyncio
+async def test_robot_drop(api, httpx_mock):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/robotDrop",
+        json={"success": True},
+    )
+    result = await api.robot_drop("1", "HEAL-002-40")
+    assert result["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_charge_robot(api, httpx_mock):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/chargeRobot",
+        json={"success": True},
+    )
+    result = await api.charge_robot("1")
+    assert result["success"] is True
+
+    req = httpx_mock.get_request()
+    body = json.loads(req.content)
+    assert body["robotId"] == "1"
+    assert body["necessary"] == 1
+    assert body["targetLevel"] == 90
+    assert body["lowestLevel"] == 5
+
+
+# -- Map image -------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_map_image_success(api, httpx_mock):
+    image_bytes = b"\x89PNG\r\n\x1a\n"
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/fileserver/HEAL/map.png",
+        content=image_bytes,
+        status_code=200,
+    )
+    result = await api.fetch_map_image("/HEAL/map.png")
+    assert result == image_bytes
+
+
+@pytest.mark.asyncio
+async def test_fetch_map_image_404(api, httpx_mock):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/fileserver/HEAL/missing.png",
+        status_code=404,
+    )
+    result = await api.fetch_map_image("/HEAL/missing.png")
+    assert result is None
