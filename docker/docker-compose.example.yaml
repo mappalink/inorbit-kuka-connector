@@ -1,0 +1,43 @@
+x-kuka-connector: &defaults
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile
+  image: kuka_connector
+  env_file: .env
+  environment:
+    - CONFIG_FILE=/config/fleet.yaml
+    - LOG_LEVEL=${LOG_LEVEL:-INFO}
+  volumes:
+    - ./fleet.yaml:/config/fleet.yaml:ro
+  network_mode: host
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "100m"
+      max-file: "5"
+  deploy:
+    resources:
+      limits:
+        memory: 512M
+        cpus: "1.0"
+      reservations:
+        memory: 256M
+        cpus: "0.5"
+
+services:
+  kuka-1:
+    <<: *defaults
+    container_name: kuka_connector_kuka-1
+    environment:
+      - ROBOT_ID=kuka-1
+      - CONFIG_FILE=/config/fleet.yaml
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+  kuka-2:
+    <<: *defaults
+    container_name: kuka_connector_kuka-2
+    environment:
+      - ROBOT_ID=kuka-2
+      - CONFIG_FILE=/config/fleet.yaml
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
