@@ -4,7 +4,7 @@
 
 # Reference: https://github.com/astral-sh/uv-docker-example/blob/main/multistage.Dockerfile
 
-FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 
 # Enable bytecode compilation and use copy mode
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
@@ -26,7 +26,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev
 
 # Must match the Python base used by the uv image above
-FROM python:3.13-slim-bookworm
+FROM python:3.12-slim-bookworm
 
 # Set the environment variable for Python to not buffer the output and make sure all information is
 # printed to the console. This is useful for troubleshooting crashes and errors.
