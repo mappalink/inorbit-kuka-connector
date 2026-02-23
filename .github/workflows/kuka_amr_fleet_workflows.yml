@@ -4,7 +4,7 @@
 
 name: KUKA AMR Connector Workflow
 
-# TODO: Replace [SOME REGISTRY] with the actual docker image registry
+# TODO: Replace SOME_REGISTRY with the actual docker image registry
 
 on:
   push:
@@ -66,7 +66,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: [SOME REGISTRY]/connectors/inorbit_kuka_connector
+          images: "SOME_REGISTRY/connectors/inorbit_kuka_connector"
           tags: |
             type=raw,value=latest
             type=raw,value=${{ env.CONNECTOR_VERSION }}
@@ -93,6 +93,6 @@ jobs:
           body: |
             Release v${{ env.CONNECTOR_VERSION }}
 
-            Docker image: `[SOME REGISTRY]/inorbit-integrations/connectors/inorbit_kuka_connector:${{ env.CONNECTOR_VERSION }}`
+            Docker image: `SOME_REGISTRY/connectors/inorbit_kuka_connector:${{ env.CONNECTOR_VERSION }}`
           draft: false
           prerelease: false
