@@ -13,20 +13,20 @@ Contributions are encouraged, and they are greatly appreciated! Every little bit
 
 ## Get Started
 
-Ready to contribute? Here's how to set up `kuka-amr-fleet-connector` for local development.
+Ready to contribute? Here's how to set up `inorbit-kuka-connector` for local development.
 
-1. Fork the `kuka-amr-fleet-connector` repo on [GitHub](https://github.com/inorbit-ai/kuka-amr-fleet-connector).
+1. Fork the `inorbit-kuka-connector` repo on [GitHub](https://github.com/inorbit-ai/inorbit-kuka-connector).
 
 2. Clone your fork locally:
 
    ```bash
-   git clone git@github.com:{your_username_here}/kuka-amr-fleet-connector.git
+   git clone git@github.com:{your_username_here}/inorbit-kuka-connector.git
    ```
 
 3. Install the project in editable mode using [`uv`](https://github.com/astral-sh/uv):
 
    ```bash
-   cd kuka-amr-fleet-connector
+   cd inorbit-kuka-connector
    uv sync --extra dev
    ```
 
@@ -60,7 +60,7 @@ Ready to contribute? Here's how to set up `kuka-amr-fleet-connector` for local d
    git push origin {your_development_type}/short-description
    ```
 
-7. Submit a pull request through the [GitHub](https://github.com/inorbit-ai/kuka-amr-fleet-connector/pulls) website.
+7. Submit a pull request through the [GitHub](https://github.com/inorbit-ai/inorbit-kuka-connector/pulls) website.
 
 ## Development
 
@@ -113,7 +113,7 @@ To release a new version:
    ```
 
 > [!IMPORTANT]
-> The message of the last commit must match the configured pattern, e.g. "Bump kuka-amr-fleet-connector version: 0.1.0 → 0.1.1", for the publish job to run.
+> The message of the last commit must match the configured pattern, e.g. "Bump inorbit-kuka-connector version: 0.1.0 → 0.1.1", for the publish job to run.
 
 New releases are built and published to the Docker repository automatically by GitHub Actions when a new version bump commit is pushed.
 
