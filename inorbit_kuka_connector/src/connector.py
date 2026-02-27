@@ -20,7 +20,7 @@ from .mission_exec import KukaMissionExecutor
 
 logger = logging.getLogger(__name__)
 
-# KUKA robot status codes
+# KUKA robot status codes (from robotQuery)
 KUKA_STATUS = {
     1: "Departure",
     2: "Offline",
@@ -30,6 +30,22 @@ KUKA_STATUS = {
     6: "Updating",
     7: "Abnormal",
 }
+
+# KUKA job status codes (from jobQuery)
+JOB_STATUS = {
+    10: "Created",
+    20: "Executing",
+    25: "Waiting",
+    28: "Cancelling",
+    30: "Complete",
+    31: "Cancelled",
+    35: "Manual complete",
+    50: "Warning",
+    60: "Startup error",
+}
+
+# Active job statuses worth reporting (not completed/cancelled)
+_ACTIVE_JOB_STATUSES = {10, 20, 25, 28, 50, 60}
 
 
 class KukaAmrConnector(Connector):
@@ -95,6 +111,9 @@ class KukaAmrConnector(Connector):
 
         self.publish_pose(x=x_m, y=y_m, yaw=yaw_rad, frame_id=frame_id)
 
+        # Enrich with active job details
+        job = await self._poll_active_job()
+
         self.publish_key_values(
             battery_percent=robot.get("batteryLevel"),
             robot_status=robot.get("status"),
@@ -114,6 +133,7 @@ class KukaAmrConnector(Connector):
             motor_temp_lift=robot.get("liftMtrTemp", ""),
             lift_times=robot.get("liftTimes", 0),
             mission_code=robot.get("missionCode", ""),
+            **self._extract_job_kv(job),
         )
 
     # -- Command handler ---------------------------------------------------
@@ -268,6 +288,60 @@ class KukaAmrConnector(Connector):
             origin_y=0.0,
             resolution=self._map_resolution,
         )
+
+    # -- Job enrichment ----------------------------------------------------
+
+    async def _poll_active_job(self) -> dict | None:
+        """Poll jobQuery for the active job on this robot.
+
+        Returns the most relevant job dict, or None if no active job.
+        """
+        try:
+            data = await self._api.job_query({"robotId": self._kuka_robot_id, "limit": 5})
+        except Exception as e:
+            logger.debug("jobQuery failed: %s", e)
+            return None
+
+        if not data.get("success") or not data.get("data"):
+            return None
+
+        # Prefer executing/waiting/warning jobs over merely created ones.
+        for job in data["data"]:
+            if job.get("status") in _ACTIVE_JOB_STATUSES:
+                return job
+
+        return None
+
+    @staticmethod
+    def _extract_job_kv(job: dict | None) -> dict:
+        """Extract key-values from a jobQuery job entry.
+
+        Always returns the full set of keys so stale values are cleared
+        when no job is active.
+        """
+        if not job:
+            return {
+                "job_status": "",
+                "job_status_text": "",
+                "job_target_node": "",
+                "job_begin_node": "",
+                "job_final_node": "",
+                "job_workflow_name": "",
+                "job_warn_code": "",
+                "job_create_time": "",
+                "job_source": "",
+            }
+        return {
+            "job_status": job.get("status", ""),
+            "job_status_text": JOB_STATUS.get(job.get("status"), ""),
+            "job_target_node": job.get("targetCellCode", ""),
+            "job_begin_node": job.get("beginCellCode", ""),
+            "job_final_node": job.get("finalNodeCode", ""),
+            "job_workflow_name": job.get("workflowName", ""),
+            "job_warn_code": job.get("warnCode", ""),
+            "job_create_time": job.get("createTime", ""),
+            "job_source": job.get("source", ""),
+        }
 
     # -- Helpers -----------------------------------------------------------
 
