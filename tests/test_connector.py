@@ -11,6 +11,8 @@ import math
 
 import pytest
 
+from inorbit_connector.connector import CommandResultCode
+
 from inorbit_kuka_connector.src.connector import (
     JOB_STATUS,
     KukaAmrConnector,
@@ -163,6 +165,79 @@ class TestJobStatusMapping:
     def test_completed_not_active(self):
         for code in (30, 31, 35):
             assert code not in _ACTIVE_JOB_STATUSES
+
+
+class TestHandleMessage:
+    """Test _handle_message (cloud-mode pause/resume)."""
+
+    @staticmethod
+    def _make_stub(mission_code, api_response=None, api_raises=None):
+        """Create a minimal connector stub with a mock API."""
+        from unittest.mock import AsyncMock
+
+        obj = object.__new__(KukaAmrConnector)
+        obj._current_kuka_mission_code = mission_code
+        obj._api = AsyncMock()
+        if api_raises:
+            obj._api.pause_mission.side_effect = api_raises
+            obj._api.recover_mission.side_effect = api_raises
+        else:
+            obj._api.pause_mission.return_value = api_response or {"success": True}
+            obj._api.recover_mission.return_value = api_response or {"success": True}
+        return obj
+
+    @pytest.mark.asyncio
+    async def test_pause_calls_api(self):
+        c = self._make_stub("MC-001")
+        results = []
+        await c._handle_message("inorbit_pause", lambda code, **kw: results.append(code))
+        c._api.pause_mission.assert_called_once_with("MC-001")
+        assert results[0] == CommandResultCode.SUCCESS
+
+    @pytest.mark.asyncio
+    async def test_resume_calls_api(self):
+        c = self._make_stub("MC-001")
+        results = []
+        await c._handle_message("inorbit_resume", lambda code, **kw: results.append(code))
+        c._api.recover_mission.assert_called_once_with("MC-001")
+        assert results[0] == CommandResultCode.SUCCESS
+
+    @pytest.mark.asyncio
+    async def test_pause_no_active_mission(self):
+        c = self._make_stub(None)
+        results = []
+        await c._handle_message("inorbit_pause", lambda code, **kw: results.append(code))
+        c._api.pause_mission.assert_not_called()
+        assert results[0] == CommandResultCode.FAILURE
+
+    @pytest.mark.asyncio
+    async def test_resume_no_active_mission(self):
+        c = self._make_stub(None)
+        results = []
+        await c._handle_message("inorbit_resume", lambda code, **kw: results.append(code))
+        c._api.recover_mission.assert_not_called()
+        assert results[0] == CommandResultCode.FAILURE
+
+    @pytest.mark.asyncio
+    async def test_api_error_returns_failure(self):
+        c = self._make_stub("MC-001", api_raises=RuntimeError("timeout"))
+        results = []
+        await c._handle_message("inorbit_pause", lambda code, **kw: results.append(code))
+        assert results[0] == CommandResultCode.FAILURE
+
+    @pytest.mark.asyncio
+    async def test_unknown_message_returns_failure(self):
+        c = self._make_stub("MC-001")
+        results = []
+        await c._handle_message("something_else", lambda code, **kw: results.append(code))
+        assert results[0] == CommandResultCode.FAILURE
+
+    @pytest.mark.asyncio
+    async def test_api_returns_failure(self):
+        c = self._make_stub("MC-001", api_response={"success": False, "msg": "err"})
+        results = []
+        await c._handle_message("inorbit_pause", lambda code, **kw: results.append(code))
+        assert results[0] == CommandResultCode.FAILURE
 
 
 class TestReportResult:
