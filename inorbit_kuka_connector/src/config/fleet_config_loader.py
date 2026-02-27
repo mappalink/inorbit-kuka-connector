@@ -24,6 +24,7 @@ KUKA_FIELDS = [
     "map_resolution",
     "nodes_file",
     "node_margin_cm",
+    "mission_database_file",
 ]
 
 

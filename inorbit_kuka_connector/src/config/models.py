@@ -33,6 +33,9 @@ class KukaConnectorConfig(BaseSettings):
     nodes_file: Optional[str] = None
     node_margin_cm: float = 5  # max distance (cm) to accept a node match
 
+    # SQLite path for edge-executor mission persistence
+    mission_database_file: Optional[str] = None
+
 
 class ConnectorConfig(InorbitConnectorConfig):
     """Full config: InOrbit base + KUKA specifics."""

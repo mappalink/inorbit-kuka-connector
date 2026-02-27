@@ -12,8 +12,11 @@ from inorbit_connector.connector import Connector, CommandResultCode
 from inorbit_connector.models import MapConfigTemp
 from inorbit_edge.robot import COMMAND_CUSTOM_COMMAND, COMMAND_MESSAGE, COMMAND_NAV_GOAL
 
+from inorbit_edge_executor.inorbit import InOrbitAPI as MissionInOrbitAPI
+
 from .config.models import ConnectorConfig
 from .kuka_api import KukaFleetApi
+from .mission_exec import KukaMissionExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -44,13 +47,27 @@ class KukaAmrConnector(Connector):
         self._nodes = self._load_nodes(cfg.nodes_file) if cfg.nodes_file else []
         self._node_margin_m = cfg.node_margin_cm / 100.0
 
+        self._current_kuka_mission_code: str | None = None
+        self._mission_executor = KukaMissionExecutor(
+            robot_id=robot_id,
+            inorbit_api=MissionInOrbitAPI(
+                base_url=self._get_session().inorbit_rest_api_endpoint,
+                api_key=self.config.api_key,
+            ),
+            kuka_api=self._api,
+            get_kuka_mission_code=lambda: self._current_kuka_mission_code,
+            database_file=cfg.mission_database_file,
+        )
+
     # -- Lifecycle ---------------------------------------------------------
 
     async def _connect(self) -> None:
         await self._api.login()
+        await self._mission_executor.initialize()
         logger.info("Connected to KUKA Fleet Manager for robot %s", self._kuka_robot_id)
 
     async def _disconnect(self) -> None:
+        await self._mission_executor.shutdown()
         await self._api.close()
         logger.info("Disconnected from KUKA Fleet Manager")
 
@@ -67,6 +84,8 @@ class KukaAmrConnector(Connector):
             return
 
         robot = data["data"][0]
+
+        self._current_kuka_mission_code = robot.get("missionCode") or None
 
         # Coordinates: millimeter strings -> meters
         x_m = float(robot.get("x", 0)) / 1000.0
@@ -109,6 +128,12 @@ class KukaAmrConnector(Connector):
             script_name = args[0]
             args_list = list(args[1]) if len(args) > 1 else []
             script_args = dict(zip(args_list[::2], args_list[1::2]))
+
+            # Try edge-executor mission commands first
+            handled = await self._mission_executor.handle_command(script_name, script_args, options)
+            if handled:
+                return
+
             await self._handle_custom_command(script_name, script_args, result_fn)
 
         elif command_name == COMMAND_MESSAGE:

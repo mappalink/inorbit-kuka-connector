@@ -25,6 +25,7 @@ classifiers = [
 ]
 dependencies = [
     "inorbit-connector[system-stats]~=2.2.0",
+    "inorbit-edge-executor>=3.2,<4",
     "httpx>=0.28,<0.29",
     "pydantic>=2.11,<3",
     "pydantic-settings>=2.11,<3",
