@@ -60,6 +60,43 @@ async def test_robot_query(api, httpx_mock):
 
 
 @pytest.mark.asyncio
+async def test_job_query_by_robot(api, httpx_mock):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/jobQuery",
+        json={
+            "success": True,
+            "data": [
+                {
+                    "jobCode": "T000096284",
+                    "robotId": "1",
+                    "status": 20,
+                    "workflowName": "Carry01",
+                    "targetCellCode": "SITE-001-90",
+                }
+            ],
+        },
+    )
+    result = await api.job_query({"robotId": "1", "limit": 5})
+    assert result["success"] is True
+    assert result["data"][0]["status"] == 20
+
+    req = httpx_mock.get_request()
+    body = json.loads(req.content)
+    assert body["robotId"] == "1"
+    assert body["limit"] == 5
+
+
+@pytest.mark.asyncio
+async def test_job_query_empty(api, httpx_mock):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/jobQuery",
+        json={"success": True, "data": []},
+    )
+    result = await api.job_query({})
+    assert result["data"] == []
+
+
+@pytest.mark.asyncio
 async def test_robot_query_all(api, httpx_mock):
     httpx_mock.add_response(
         url=f"{BASE_URL}/interfaces/api/amr/robotQuery",

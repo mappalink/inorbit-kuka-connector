@@ -11,7 +11,11 @@ import math
 
 import pytest
 
-from inorbit_kuka_connector.src.connector import KukaAmrConnector
+from inorbit_kuka_connector.src.connector import (
+    JOB_STATUS,
+    KukaAmrConnector,
+    _ACTIVE_JOB_STATUSES,
+)
 
 
 class TestScriptArgsParsing:
@@ -96,6 +100,69 @@ class TestLoadNodes:
         assert len(nodes) == 2
         assert nodes[0] == ("N1", 1.5, 2.5)
         assert nodes[1] == ("N2", 3.0, 4.0)
+
+
+class TestExtractJobKv:
+    """Test _extract_job_kv static method."""
+
+    def test_no_job_returns_empty_values(self):
+        kv = KukaAmrConnector._extract_job_kv(None)
+        assert kv["job_status"] == ""
+        assert kv["job_status_text"] == ""
+        assert kv["job_target_node"] == ""
+        assert kv["job_workflow_name"] == ""
+        assert kv["job_warn_code"] == ""
+        assert kv["job_create_time"] == ""
+        # All 9 keys present
+        assert len(kv) == 9
+
+    def test_executing_job(self):
+        job = {
+            "jobCode": "T001",
+            "status": 20,
+            "targetCellCode": "SITE-001-90",
+            "beginCellCode": "SITE-001-80",
+            "finalNodeCode": "SITE-001-90",
+            "workflowName": "Carry01",
+            "warnCode": None,
+            "createTime": "2026-02-19 15:51:14",
+            "source": "SELF",
+        }
+        kv = KukaAmrConnector._extract_job_kv(job)
+        assert kv["job_status"] == 20
+        assert kv["job_status_text"] == "Executing"
+        assert kv["job_target_node"] == "SITE-001-90"
+        assert kv["job_begin_node"] == "SITE-001-80"
+        assert kv["job_final_node"] == "SITE-001-90"
+        assert kv["job_workflow_name"] == "Carry01"
+        assert kv["job_create_time"] == "2026-02-19 15:51:14"
+        assert kv["job_source"] == "SELF"
+
+    def test_warning_job(self):
+        job = {"status": 50, "warnCode": "CHARGING_TIMEOUT", "workflowName": "ManualCharging"}
+        kv = KukaAmrConnector._extract_job_kv(job)
+        assert kv["job_status"] == 50
+        assert kv["job_status_text"] == "Warning"
+        assert kv["job_warn_code"] == "CHARGING_TIMEOUT"
+
+    def test_missing_fields_default_to_empty(self):
+        job = {"status": 20}
+        kv = KukaAmrConnector._extract_job_kv(job)
+        assert kv["job_status"] == 20
+        assert kv["job_target_node"] == ""
+        assert kv["job_workflow_name"] == ""
+        assert len(kv) == 9
+
+
+class TestJobStatusMapping:
+    """Verify JOB_STATUS and _ACTIVE_JOB_STATUSES are consistent."""
+
+    def test_active_statuses_are_subset(self):
+        assert _ACTIVE_JOB_STATUSES <= set(JOB_STATUS.keys())
+
+    def test_completed_not_active(self):
+        for code in (30, 31, 35):
+            assert code not in _ACTIVE_JOB_STATUSES
 
 
 class TestReportResult:
