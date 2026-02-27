@@ -107,7 +107,8 @@ class KukaAmrConnector(Connector):
 
         elif command_name == COMMAND_CUSTOM_COMMAND:
             script_name = args[0]
-            script_args = args[1] if len(args) > 1 else ""
+            args_list = list(args[1]) if len(args) > 1 else []
+            script_args = dict(zip(args_list[::2], args_list[1::2]))
             await self._handle_custom_command(script_name, script_args, result_fn)
 
         elif command_name == COMMAND_MESSAGE:
@@ -118,20 +119,20 @@ class KukaAmrConnector(Connector):
             logger.warning("Unhandled command type: %s", command_name)
             result_fn(CommandResultCode.FAILURE)
 
-    async def _handle_custom_command(self, script_name, script_args, result_fn):
+    async def _handle_custom_command(self, script_name, script_args: dict, result_fn):
         try:
             if script_name == "move_to_node":
-                node_code = self._parse_arg(script_args, "--node_code")
+                node_code = script_args["--node_code"]
                 resp = await self._api.robot_move(self._kuka_robot_id, node_code)
                 self._report_result(resp, result_fn)
 
             elif script_name == "lift":
-                container_code = self._parse_arg(script_args, "--container_code")
+                container_code = script_args["--container_code"]
                 resp = await self._api.robot_lift(self._kuka_robot_id, container_code)
                 self._report_result(resp, result_fn)
 
             elif script_name == "drop":
-                node_code = self._parse_arg(script_args, "--node_code")
+                node_code = script_args["--node_code"]
                 resp = await self._api.robot_drop(self._kuka_robot_id, node_code)
                 self._report_result(resp, result_fn)
 
@@ -140,17 +141,17 @@ class KukaAmrConnector(Connector):
                 self._report_result(resp, result_fn)
 
             elif script_name == "cancel_mission":
-                mission_code = self._parse_arg(script_args, "--mission_code")
+                mission_code = script_args["--mission_code"]
                 resp = await self._api.cancel_mission(mission_code)
                 self._report_result(resp, result_fn)
 
             elif script_name == "pause_mission":
-                mission_code = self._parse_arg(script_args, "--mission_code")
+                mission_code = script_args["--mission_code"]
                 resp = await self._api.pause_mission(mission_code)
                 self._report_result(resp, result_fn)
 
             elif script_name == "resume_mission":
-                mission_code = self._parse_arg(script_args, "--mission_code")
+                mission_code = script_args["--mission_code"]
                 resp = await self._api.recover_mission(mission_code)
                 self._report_result(resp, result_fn)
 
@@ -162,6 +163,9 @@ class KukaAmrConnector(Connector):
                 logger.warning("Unknown custom command: %s", script_name)
                 result_fn(CommandResultCode.FAILURE)
 
+        except KeyError as e:
+            logger.error("Custom command '%s' missing argument: %s", script_name, e)
+            result_fn(CommandResultCode.FAILURE)
         except Exception as e:
             logger.error("Custom command '%s' failed: %s", script_name, e)
             result_fn(CommandResultCode.FAILURE)
@@ -261,14 +265,6 @@ class KukaAmrConnector(Connector):
             )
         logger.info("Loaded %d nodes from %s", len(nodes), path)
         return nodes
-
-    @staticmethod
-    def _parse_arg(script_args: str, arg_name: str) -> str:
-        """Parse a --key value argument from the script args string."""
-        parts = script_args.split(arg_name)
-        if len(parts) < 2:
-            raise ValueError(f"Missing argument: {arg_name}")
-        return parts[1].strip().split()[0]
 
     @staticmethod
     def _report_result(resp: dict, result_fn) -> None:

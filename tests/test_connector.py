@@ -14,18 +14,30 @@ import pytest
 from inorbit_kuka_connector.src.connector import KukaAmrConnector
 
 
-class TestParseArg:
-    def test_extracts_value(self):
-        result = KukaAmrConnector._parse_arg("--node_code HEAL-002-40 --extra foo", "--node_code")
-        assert result == "HEAL-002-40"
+class TestScriptArgsParsing:
+    """args[1] from COMMAND_CUSTOM_COMMAND is a list of alternating key-value strings."""
 
-    def test_raises_on_missing_arg(self):
-        with pytest.raises(ValueError, match="Missing argument"):
-            KukaAmrConnector._parse_arg("--other value", "--node_code")
+    def test_dict_conversion(self):
+        args_list = ["--node_code", "HEAL-002-40", "--extra", "foo"]
+        script_args = dict(zip(args_list[::2], args_list[1::2]))
+        assert script_args["--node_code"] == "HEAL-002-40"
+        assert script_args["--extra"] == "foo"
 
-    def test_extracts_last_arg(self):
-        result = KukaAmrConnector._parse_arg("--mission_code MC-001", "--mission_code")
-        assert result == "MC-001"
+    def test_missing_key_raises(self):
+        args_list = ["--other", "value"]
+        script_args = dict(zip(args_list[::2], args_list[1::2]))
+        with pytest.raises(KeyError):
+            _ = script_args["--node_code"]
+
+    def test_single_pair(self):
+        args_list = ["--mission_code", "MC-001"]
+        script_args = dict(zip(args_list[::2], args_list[1::2]))
+        assert script_args["--mission_code"] == "MC-001"
+
+    def test_empty_args(self):
+        args_list = []
+        script_args = dict(zip(args_list[::2], args_list[1::2]))
+        assert script_args == {}
 
 
 class TestFindNearestNode:
