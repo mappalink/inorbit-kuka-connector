@@ -19,6 +19,8 @@ common:
   map_image_path: "/HEAL_V4_FM_floor_0/HEAL_V4_FM_floor_0.png"
   map_resolution: 0.05
 
+  # mission_database_file: missions.db  # Optional: SQLite file for edge-executor persistence
+
 kuka-1:
   robot_name: "KUKA KMP 600P #1"
   kuka_robot_id: "1"
