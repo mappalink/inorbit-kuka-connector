@@ -262,10 +262,25 @@ class KukaAmrConnector(Connector):
         return best_node, best_dist
 
     async def _handle_message(self, msg, result_fn):
-        # KUKA pause/resume only works on active missions.
-        # For now, log and report failure since we'd need the active mission code.
-        logger.info("Message command received: %s (not implemented)", msg)
-        result_fn(CommandResultCode.FAILURE)
+        """Handle cloud-mode COMMAND_MESSAGE commands (inorbit_pause, inorbit_resume)."""
+        if msg in ("inorbit_pause", "inorbit_resume"):
+            code = self._current_kuka_mission_code
+            if not code:
+                logger.warning("%s: no active mission to target", msg)
+                result_fn(CommandResultCode.FAILURE)
+                return
+            try:
+                if msg == "inorbit_pause":
+                    resp = await self._api.pause_mission(code)
+                else:
+                    resp = await self._api.recover_mission(code)
+                self._report_result(resp, result_fn)
+            except Exception as e:
+                logger.error("%s failed: %s", msg, e)
+                result_fn(CommandResultCode.FAILURE)
+        else:
+            logger.warning("Unhandled message command: %s", msg)
+            result_fn(CommandResultCode.FAILURE)
 
     # -- Map ---------------------------------------------------------------
 
