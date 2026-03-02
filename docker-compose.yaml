@@ -3,17 +3,18 @@
 # SPDX-License-Identifier: MIT
 
 services:
-  kuka-1:
+  kuka-local-test:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: kuka_connector_kuka-1
+    container_name: kuka_connector_local-test
     env_file: .env
     environment:
-      - ROBOT_ID=kuka-1
+      - ROBOT_ID=kuka-local-test
       - CONFIG_FILE=/config/fleet.yaml
       - LOG_LEVEL=DEBUG
     volumes:
       - ./config/my_fleet.yaml:/config/fleet.yaml:ro
+      - ./config/kuka_map_HEAL_002.json:/config/kuka_map_HEAL_002.json:ro
     network_mode: host
     restart: "no"
