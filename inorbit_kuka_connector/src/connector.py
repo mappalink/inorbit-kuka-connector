@@ -234,16 +234,14 @@ class KukaAmrConnector(Connector):
             result_fn(CommandResultCode.FAILURE, execution_status_details=msg)
             return
         logger.info(
-            "NAV_GOAL (%.3f, %.3f) -> node %s (%.3fm away) [DRY RUN]",
+            "NAV_GOAL (%.3f, %.3f) -> node %s (%.3fm away)",
             x,
             y,
             node_code,
             distance,
         )
-        # TODO: enable when verified
-        # resp = await self._api.robot_move(self._kuka_robot_id, node_code)
-        # self._report_result(resp, result_fn)
-        result_fn(CommandResultCode.SUCCESS)
+        resp = await self._api.robot_move(self._kuka_robot_id, node_code)
+        self._report_result(resp, result_fn)
 
     def _find_nearest_node(self, x: float, y: float) -> tuple[str | None, float]:
         """Find the nearest KUKA node to the given coordinates (meters).
