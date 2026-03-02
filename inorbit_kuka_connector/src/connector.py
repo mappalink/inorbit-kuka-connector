@@ -146,6 +146,14 @@ class KukaAmrConnector(Connector):
 
         elif command_name == COMMAND_CUSTOM_COMMAND:
             script_name = args[0]
+            logger.info(
+                "COMMAND_CUSTOM_COMMAND: script=%s, len(args)=%d, "
+                "args types=%s, args=%s",
+                script_name,
+                len(args),
+                [type(a).__name__ for a in args],
+                [str(a)[:200] for a in args],
+            )
             args_list = list(args[1]) if len(args) > 1 else []
             script_args = dict(zip(args_list[::2], args_list[1::2]))
 
