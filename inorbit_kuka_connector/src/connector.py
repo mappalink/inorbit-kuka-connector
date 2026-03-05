@@ -176,6 +176,14 @@ class KukaAmrConnector(Connector):
                 resp = await self._api.robot_lift(self._kuka_robot_id, container_code)
                 self._report_result(resp, result_fn)
 
+            elif script_name == "move_carry":
+                container_code = script_args["--container_code"]
+                node_code = script_args["--node_code"]
+                resp = await self._api.robot_move_carry(
+                    self._kuka_robot_id, container_code, node_code
+                )
+                self._report_result(resp, result_fn)
+
             elif script_name == "drop":
                 node_code = script_args["--node_code"]
                 resp = await self._api.robot_drop(self._kuka_robot_id, node_code)
