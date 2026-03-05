@@ -106,6 +106,24 @@ class KukaFleetApi:
             },
         )
 
+    async def robot_move_carry(
+        self, robot_id: str, container_code: str, target_node_code: str
+    ) -> dict:
+        """Move robot carrying a container to a target node.
+
+        Unlike robotMove, this tells the Fleet Manager which container is
+        being carried so it can apply the correct footprint, obstacle
+        avoidance plan, and speed limits for the laden robot.
+        """
+        return await self._post(
+            "robotMoveCarry",
+            {
+                "robotId": robot_id,
+                "containerCode": container_code,
+                "targetNodeCode": target_node_code,
+            },
+        )
+
     async def robot_drop(self, robot_id: str, node_code: str) -> dict:
         """Drop a container at a node."""
         return await self._post(

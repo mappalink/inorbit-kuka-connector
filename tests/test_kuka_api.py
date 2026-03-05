@@ -138,6 +138,23 @@ async def test_robot_lift(api, httpx_mock):
 
 
 @pytest.mark.asyncio
+async def test_robot_move_carry(api, httpx_mock):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/robotMoveCarry",
+        json={"success": True},
+    )
+    result = await api.robot_move_carry("1", "CartPanels-1", "SITE-001-40")
+    assert result["success"] is True
+
+    req = httpx_mock.get_request()
+    assert json.loads(req.content) == {
+        "robotId": "1",
+        "containerCode": "CartPanels-1",
+        "targetNodeCode": "SITE-001-40",
+    }
+
+
+@pytest.mark.asyncio
 async def test_robot_drop(api, httpx_mock):
     httpx_mock.add_response(
         url=f"{BASE_URL}/interfaces/api/amr/robotDrop",
