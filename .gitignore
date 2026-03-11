@@ -26,6 +26,7 @@ config/.env
 config/my_fleet.yaml
 config/*local*.yaml
 docker/docker-compose.yaml
+docker-compose.yaml
 
 # Certificates
 *.pem

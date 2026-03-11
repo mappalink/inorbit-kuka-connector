@@ -13,7 +13,7 @@ x-kuka-connector: &defaults
     - LOG_LEVEL=${LOG_LEVEL:-INFO}
   volumes:
     - ../config/my_fleet.yaml:/config/fleet.yaml:ro
-    - ../config/kuka_nodes.json:/config/kuka_nodes.json:ro
+    # - ../config/kuka_nodes.json:/config/kuka_nodes.json:ro
   network_mode: host
   restart: unless-stopped
   logging:

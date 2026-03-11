@@ -21,19 +21,15 @@ common:
 
   # mission_database_file: missions.db  # Optional: SQLite file for edge-executor persistence
 
-kuka-1:
+robot-1:
   robot_name: "KUKA KMP 600P #1"
   kuka_robot_id: "1"
 
-kuka-2:
+robot-2:
   robot_name: "KUKA KMP 600P #2"
   kuka_robot_id: "2"
 
 # Test/simulated robots
-# kuka-100:
+# robot-100:
 #   robot_name: "KUKA KMP 600P #100 (sim)"
 #   kuka_robot_id: "100"
-#
-# kuka-200:
-#   robot_name: "KUKA KMP 600P #200 (sim)"
-#   kuka_robot_id: "200"
