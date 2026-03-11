@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: 2026 InOrbit, Inc.
+# SPDX-FileCopyrightText: 2026 Mappalink
 #
 # SPDX-License-Identifier: MIT
 

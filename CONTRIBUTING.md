@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2026 InOrbit, Inc.
+SPDX-FileCopyrightText: 2026 Mappalink
 
 SPDX-License-Identifier: MIT
 -->
@@ -15,7 +15,7 @@ Contributions are encouraged, and they are greatly appreciated! Every little bit
 
 Ready to contribute? Here's how to set up `inorbit-kuka-connector` for local development.
 
-1. Fork the `inorbit-kuka-connector` repo on [GitHub](https://github.com/inorbit-ai/inorbit-kuka-connector).
+1. Fork the `inorbit-kuka-connector` repo on [GitHub](https://github.com/mappalink/inorbit-kuka-connector).
 
 2. Clone your fork locally:
 
@@ -60,7 +60,7 @@ Ready to contribute? Here's how to set up `inorbit-kuka-connector` for local dev
    git push origin {your_development_type}/short-description
    ```
 
-7. Submit a pull request through the [GitHub](https://github.com/inorbit-ai/inorbit-kuka-connector/pulls) website.
+7. Submit a pull request through the [GitHub](https://github.com/mappalink/inorbit-kuka-connector/pulls) website.
 
 ## Development
 
@@ -75,7 +75,7 @@ reuse --root . lint
 And to fix REUSE compliance issues, run:
 
 ```bash
-reuse annotate --copyright "InOrbit, Inc." --license "MIT" --recursive . --skip-unrecognised
+reuse annotate --copyright "Mappalink" --license "MIT" --recursive . --skip-unrecognised
 ```
 
 ## Version bump and release - Maintainers only
@@ -105,12 +105,13 @@ To release a new version:
    make bump DIRTY=1 PART=patch
    ```
 
-3. Push the commit and the tag:
+3. Push the commit:
 
    ```bash
    git push
-   git push --tags
    ```
+
+   CI will create the git tag and GitHub release after checks pass.
 
 > [!IMPORTANT]
 > The message of the last commit must match the configured pattern, e.g. "Bump inorbit-kuka-connector version: 0.1.0 → 0.1.1", for the publish job to run.
