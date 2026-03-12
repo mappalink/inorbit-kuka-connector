@@ -73,6 +73,9 @@ class KukaAmrConnector(Connector):
             kuka_api=self._api,
             get_kuka_mission_code=lambda: self._current_kuka_mission_code,
             database_file=cfg.mission_database_file,
+            kuka_robot_id=self._kuka_robot_id,
+            nodes=self._nodes,
+            node_margin_m=self._node_margin_m,
         )
 
     # -- Lifecycle ---------------------------------------------------------

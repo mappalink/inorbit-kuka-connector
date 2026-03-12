@@ -20,6 +20,8 @@ from inorbit_edge_executor.mission import Mission
 from inorbit_edge_executor.worker_pool import WorkerPool
 
 from .kuka_api import KukaFleetApi
+from .mission.behavior_tree import KukaBehaviorTreeBuilderContext
+from .mission.tree_builder import KukaTreeBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -33,18 +35,38 @@ class MissionScriptName(Enum):
 
 
 class KukaWorkerPool(WorkerPool):
-    """WorkerPool that forwards pause/resume/abort to the KUKA Fleet API."""
+    """WorkerPool that executes steps locally via KUKA API and forwards
+    pause/resume/abort to the KUKA Fleet API."""
 
     def __init__(
         self,
         kuka_api: KukaFleetApi,
         get_kuka_mission_code: Callable[[], str | None],
+        kuka_robot_id: str = "",
+        nodes: list[tuple[str, float, float]] | None = None,
+        node_margin_m: float = 0.05,
         *args,
         **kwargs,
     ):
         self._kuka_api = kuka_api
         self._get_kuka_mission_code = get_kuka_mission_code
-        super().__init__(*args, **kwargs)
+        self._kuka_robot_id = kuka_robot_id
+        self._nodes = nodes or []
+        self._node_margin_m = node_margin_m
+        super().__init__(behavior_tree_builder=KukaTreeBuilder(), *args, **kwargs)
+
+    def create_builder_context(self) -> KukaBehaviorTreeBuilderContext:
+        return KukaBehaviorTreeBuilderContext(
+            kuka_api=self._kuka_api,
+            kuka_robot_id=self._kuka_robot_id,
+            nodes=self._nodes,
+            node_margin_m=self._node_margin_m,
+        )
+
+    def prepare_builder_context(self, context, mission):
+        super().prepare_builder_context(context, mission)
+        # Attach mission code getter so abort nodes can cancel the active KUKA mission
+        context._get_kuka_mission_code = self._get_kuka_mission_code
 
     async def pause_mission(self, mission_id):
         await super().pause_mission(mission_id)
@@ -81,11 +103,17 @@ class KukaMissionExecutor:
         kuka_api: KukaFleetApi,
         get_kuka_mission_code: Callable[[], str | None],
         database_file: str | None = None,
+        kuka_robot_id: str = "",
+        nodes: list[tuple[str, float, float]] | None = None,
+        node_margin_m: float = 0.05,
     ):
         self._robot_id = robot_id
         self._inorbit_api = inorbit_api
         self._kuka_api = kuka_api
         self._get_kuka_mission_code = get_kuka_mission_code
+        self._kuka_robot_id = kuka_robot_id
+        self._nodes = nodes or []
+        self._node_margin_m = node_margin_m
         if database_file:
             if database_file == "dummy":
                 self._database_file = "dummy"
@@ -103,6 +131,9 @@ class KukaMissionExecutor:
         self._worker_pool = KukaWorkerPool(
             kuka_api=self._kuka_api,
             get_kuka_mission_code=self._get_kuka_mission_code,
+            kuka_robot_id=self._kuka_robot_id,
+            nodes=self._nodes,
+            node_margin_m=self._node_margin_m,
             api=self._inorbit_api,
             db=db,
         )
