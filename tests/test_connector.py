@@ -240,6 +240,55 @@ class TestHandleMessage:
         assert results[0] == CommandResultCode.FAILURE
 
 
+class TestPauseResumeRobot:
+    """Test pauseRobot / resumeRobot custom commands (FlowCore traffic management)."""
+
+    @staticmethod
+    def _make_stub(mission_code, api_response=None):
+        from unittest.mock import AsyncMock
+
+        obj = object.__new__(KukaAmrConnector)
+        obj._current_kuka_mission_code = mission_code
+        obj._kuka_robot_id = "1"
+        obj._api = AsyncMock()
+        obj._api.pause_mission.return_value = api_response or {"success": True}
+        obj._api.recover_mission.return_value = api_response or {"success": True}
+        return obj
+
+    @pytest.mark.asyncio
+    async def test_pause_robot_calls_api(self):
+        c = self._make_stub("MC-001")
+        results = []
+        await c._handle_custom_command("pauseRobot", {}, lambda code, **kw: results.append(code))
+        c._api.pause_mission.assert_called_once_with("MC-001")
+        assert results[0] == CommandResultCode.SUCCESS
+
+    @pytest.mark.asyncio
+    async def test_resume_robot_calls_api(self):
+        c = self._make_stub("MC-001")
+        results = []
+        await c._handle_custom_command("resumeRobot", {}, lambda code, **kw: results.append(code))
+        c._api.recover_mission.assert_called_once_with("MC-001")
+        assert results[0] == CommandResultCode.SUCCESS
+
+    @pytest.mark.asyncio
+    async def test_pause_robot_no_mission_succeeds(self):
+        """pauseRobot with no active mission returns SUCCESS (robot is already stopped)."""
+        c = self._make_stub(None)
+        results = []
+        await c._handle_custom_command("pauseRobot", {}, lambda code, **kw: results.append(code))
+        c._api.pause_mission.assert_not_called()
+        assert results[0] == CommandResultCode.SUCCESS
+
+    @pytest.mark.asyncio
+    async def test_resume_robot_no_mission_succeeds(self):
+        c = self._make_stub(None)
+        results = []
+        await c._handle_custom_command("resumeRobot", {}, lambda code, **kw: results.append(code))
+        c._api.recover_mission.assert_not_called()
+        assert results[0] == CommandResultCode.SUCCESS
+
+
 class TestReportResult:
     def test_success(self):
         results = []
