@@ -125,7 +125,7 @@ async def test_robot_move(api, httpx_mock):
 
 
 @pytest.mark.asyncio
-async def test_robot_lift(api, httpx_mock):
+async def test_robot_lift_with_container(api, httpx_mock):
     httpx_mock.add_response(
         url=f"{BASE_URL}/interfaces/api/amr/robotLift",
         json={"success": True},
@@ -134,7 +134,39 @@ async def test_robot_lift(api, httpx_mock):
     assert result["success"] is True
 
     req = httpx_mock.get_request()
-    assert json.loads(req.content) == {"robotId": "1", "containerCode": "C001"}
+    body = json.loads(req.content)
+    assert body == {"robotId": "1", "containerCode": "C001", "moveLift": 1}
+
+
+@pytest.mark.asyncio
+async def test_robot_lift_blind(api, httpx_mock):
+    """Blind lift — no container code, just raise mechanism."""
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/robotLift",
+        json={"success": True},
+    )
+    result = await api.robot_lift("1")
+    assert result["success"] is True
+
+    req = httpx_mock.get_request()
+    body = json.loads(req.content)
+    assert body == {"robotId": "1", "moveLift": 1}
+    assert "containerCode" not in body
+
+
+@pytest.mark.asyncio
+async def test_robot_lift_in_place(api, httpx_mock):
+    """In-place lift — moveLift=0, no repositioning."""
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/robotLift",
+        json={"success": True},
+    )
+    result = await api.robot_lift("1", "C001", move_lift=0)
+    assert result["success"] is True
+
+    req = httpx_mock.get_request()
+    body = json.loads(req.content)
+    assert body == {"robotId": "1", "containerCode": "C001", "moveLift": 0}
 
 
 @pytest.mark.asyncio
@@ -155,13 +187,33 @@ async def test_robot_move_carry(api, httpx_mock):
 
 
 @pytest.mark.asyncio
-async def test_robot_drop(api, httpx_mock):
+async def test_robot_drop_at_node(api, httpx_mock):
     httpx_mock.add_response(
         url=f"{BASE_URL}/interfaces/api/amr/robotDrop",
         json={"success": True},
     )
     result = await api.robot_drop("1", "SITE-001-40")
     assert result["success"] is True
+
+    req = httpx_mock.get_request()
+    body = json.loads(req.content)
+    assert body == {"robotId": "1", "nodeCode": "SITE-001-40"}
+
+
+@pytest.mark.asyncio
+async def test_robot_drop_in_place(api, httpx_mock):
+    """Drop in place — no node code, lower mechanism at current position."""
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/robotDrop",
+        json={"success": True},
+    )
+    result = await api.robot_drop("1")
+    assert result["success"] is True
+
+    req = httpx_mock.get_request()
+    body = json.loads(req.content)
+    assert body == {"robotId": "1"}
+    assert "nodeCode" not in body
 
 
 @pytest.mark.asyncio

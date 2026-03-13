@@ -227,11 +227,22 @@ class TestWaitForKukaCompletionNode:
 
 class TestKukaActionNode:
     @pytest.mark.asyncio
-    async def test_lift(self):
+    async def test_lift_blind(self):
+        """Simple lift — just raise mechanism, no args."""
+        ctx = _make_context()
+        node = KukaActionNode(ctx, action_name="lift", action_args={}, label="test")
+        ctx.shared_memory.freeze()
+        await node._execute()
+
+        ctx.kuka_api.robot_lift.assert_awaited_once_with("100")
+
+    @pytest.mark.asyncio
+    async def test_container_lift(self):
+        """Container lift — explicit container code."""
         ctx = _make_context()
         node = KukaActionNode(
             ctx,
-            action_name="lift",
+            action_name="container_lift",
             action_args={"container_code": "C-100"},
             label="test",
         )
@@ -241,11 +252,22 @@ class TestKukaActionNode:
         ctx.kuka_api.robot_lift.assert_awaited_once_with("100", "C-100")
 
     @pytest.mark.asyncio
-    async def test_drop(self):
+    async def test_drop_in_place(self):
+        """Simple drop — lower mechanism in place, no args."""
+        ctx = _make_context()
+        node = KukaActionNode(ctx, action_name="drop", action_args={}, label="test")
+        ctx.shared_memory.freeze()
+        await node._execute()
+
+        ctx.kuka_api.robot_drop.assert_awaited_once_with("100")
+
+    @pytest.mark.asyncio
+    async def test_container_drop(self):
+        """Container drop — explicit node code."""
         ctx = _make_context()
         node = KukaActionNode(
             ctx,
-            action_name="drop",
+            action_name="container_drop",
             action_args={"node_code": "NODE-001"},
             label="test",
         )
@@ -287,7 +309,7 @@ class TestKukaActionNode:
         ctx = _make_context()
         node = KukaActionNode(
             ctx,
-            action_name="lift",
+            action_name="container_lift",
             action_args={},  # missing container_code
             label="test",
         )
@@ -311,25 +333,25 @@ class TestKukaActionNode:
         ctx.kuka_api.robot_lift = AsyncMock(return_value={"success": False})
         node = KukaActionNode(
             ctx,
-            action_name="lift",
+            action_name="container_lift",
             action_args={"container_code": "C-100"},
             label="test",
         )
         ctx.shared_memory.freeze()
 
-        with pytest.raises(RuntimeError, match="lift failed"):
+        with pytest.raises(RuntimeError, match="container_lift failed"):
             await node._execute()
 
     def test_dump_object(self):
         ctx = _make_context()
         node = KukaActionNode(
             ctx,
-            action_name="lift",
+            action_name="container_lift",
             action_args={"container_code": "C-100"},
             label="test",
         )
         obj = node.dump_object()
-        assert obj["action_name"] == "lift"
+        assert obj["action_name"] == "container_lift"
         assert obj["action_args"] == {"container_code": "C-100"}
 
 
@@ -418,12 +440,24 @@ class TestKukaNodeFromStepBuilder:
         assert tree is not None
 
     def test_visit_run_action_lift(self):
+        """Simple lift — no args required."""
+        ctx = _make_context()
+        builder = KukaNodeFromStepBuilder(ctx)
+
+        step = MissionStepRunAction(
+            runAction={"actionId": "lift", "arguments": {}},
+        )
+        tree = step.accept(builder)
+        assert tree is not None
+
+    def test_visit_run_action_container_lift(self):
+        """Container lift — requires container_code."""
         ctx = _make_context()
         builder = KukaNodeFromStepBuilder(ctx)
 
         step = MissionStepRunAction(
             runAction={
-                "actionId": "lift",
+                "actionId": "container_lift",
                 "arguments": {"container_code": "C-100"},
             },
         )

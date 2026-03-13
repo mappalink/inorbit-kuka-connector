@@ -249,10 +249,13 @@ class KukaMoveToNodeNode(BehaviorTree):
 
 # Maps action names to (api_method_name, required_arg_keys)
 _KUKA_ACTION_MAP = {
-    "lift": ("robot_lift", ["container_code"]),
-    "drop": ("robot_drop", ["node_code"]),
+    "lift": ("robot_lift", []),
+    "container_lift": ("robot_lift", ["container_code"]),
+    "drop": ("robot_drop", []),
+    "container_drop": ("robot_drop", ["node_code"]),
     "move_carry": ("robot_move_carry", ["container_code", "node_code"]),
     "charge": ("charge_robot", []),
+    "unlock": ("unlock_robot", []),
 }
 
 

@@ -96,15 +96,25 @@ class KukaFleetApi:
             },
         )
 
-    async def robot_lift(self, robot_id: str, container_code: str) -> dict:
-        """Lift a container."""
-        return await self._post(
-            "robotLift",
-            {
-                "robotId": robot_id,
-                "containerCode": container_code,
-            },
-        )
+    async def robot_lift(
+        self,
+        robot_id: str,
+        container_code: str | None = None,
+        move_lift: int = 1,
+    ) -> dict:
+        """Lift a container.
+
+        Args:
+            robot_id: Robot ID.
+            container_code: Container to lift. Omit for blind lift (just raise
+                mechanism without tracking a container).
+            move_lift: 1 = move to container and lift (default),
+                0 = actuate lift in place (no repositioning).
+        """
+        body: dict = {"robotId": robot_id, "moveLift": move_lift}
+        if container_code:
+            body["containerCode"] = container_code
+        return await self._post("robotLift", body)
 
     async def robot_move_carry(
         self, robot_id: str, container_code: str, target_node_code: str
@@ -124,15 +134,18 @@ class KukaFleetApi:
             },
         )
 
-    async def robot_drop(self, robot_id: str, node_code: str) -> dict:
-        """Drop a container at a node."""
-        return await self._post(
-            "robotDrop",
-            {
-                "robotId": robot_id,
-                "nodeCode": node_code,
-            },
-        )
+    async def robot_drop(self, robot_id: str, node_code: str | None = None) -> dict:
+        """Drop a container at a node.
+
+        Args:
+            robot_id: Robot ID.
+            node_code: Target node. Omit to drop in place (lower mechanism
+                at current position).
+        """
+        body: dict = {"robotId": robot_id}
+        if node_code:
+            body["nodeCode"] = node_code
+        return await self._post("robotDrop", body)
 
     async def charge_robot(
         self,
