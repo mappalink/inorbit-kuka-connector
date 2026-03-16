@@ -100,7 +100,7 @@ class KukaFleetApi:
         self,
         robot_id: str,
         container_code: str | None = None,
-        move_lift: int = 1,
+        move_lift: int | None = None,
     ) -> dict:
         """Lift a container.
 
@@ -108,9 +108,12 @@ class KukaFleetApi:
             robot_id: Robot ID.
             container_code: Container to lift. Omit for blind lift (just raise
                 mechanism without tracking a container).
-            move_lift: 1 = move to container and lift (default),
+            move_lift: 1 = move to container and lift,
                 0 = actuate lift in place (no repositioning).
+                Default: 1 if container_code given, 0 if blind lift.
         """
+        if move_lift is None:
+            move_lift = 1 if container_code else 0
         body: dict = {"robotId": robot_id, "moveLift": move_lift}
         if container_code:
             body["containerCode"] = container_code

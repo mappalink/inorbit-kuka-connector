@@ -150,7 +150,7 @@ async def test_robot_lift_blind(api, httpx_mock):
 
     req = httpx_mock.get_request()
     body = json.loads(req.content)
-    assert body == {"robotId": "1", "moveLift": 1}
+    assert body == {"robotId": "1", "moveLift": 0}
     assert "containerCode" not in body
 
 
