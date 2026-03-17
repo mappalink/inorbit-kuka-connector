@@ -5,6 +5,7 @@
 """Async HTTP client for the KUKA.AMR Fleet Interface Manager API."""
 
 import logging
+import uuid
 from typing import Any
 
 import httpx
@@ -176,6 +177,7 @@ class KukaFleetApi:
         return await self._post(
             "missionCancel",
             {
+                "requestId": str(uuid.uuid4()),
                 "missionCode": mission_code,
                 "cancelMode": cancel_mode,
             },
