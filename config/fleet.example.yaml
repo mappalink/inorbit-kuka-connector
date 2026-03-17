@@ -10,6 +10,9 @@ common:
   env_vars:
     INORBIT_API_KEY: "${INORBIT_API_KEY}"
 
+  # KUKA robot model string (must match Fleet Manager exactly)
+  robot_model: "KMP 600P-EU-DIC diffDrive"
+
   # KUKA.AMR Fleet Interface Manager (separate from Fleet Manager UI)
   fleet_url: "http://192.168.1.100:5000"
   username: "${KUKA_INTERFACE_USERNAME}"

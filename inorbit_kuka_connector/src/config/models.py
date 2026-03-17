@@ -23,6 +23,7 @@ class KukaConnectorConfig(BaseSettings):
     username: str  # Interface Manager username
     password: str  # Interface Manager password (plain text)
     kuka_robot_id: str  # Robot ID in KUKA Fleet (e.g. "1", "2", "100")
+    robot_model: str  # KUKA robot model string for submitMission (e.g. "KMP 600P-EU-DIC diffDrive")
     poll_frequency: float = 1.0  # Hz
 
     # Map image path on the KUKA fileserver (no auth required)

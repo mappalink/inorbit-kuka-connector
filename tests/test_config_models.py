@@ -16,6 +16,7 @@ REQUIRED_KUKA_FIELDS = {
     "username": "admin",
     "password": "secret",
     "kuka_robot_id": "1",
+    "robot_model": "KMP 600P-EU-DIC diffDrive",
 }
 
 
@@ -63,12 +64,14 @@ def test_env_var_fallback(monkeypatch):
     monkeypatch.setenv("INORBIT_KUKA_USERNAME", "env-user")
     monkeypatch.setenv("INORBIT_KUKA_PASSWORD", "env-pass")
     monkeypatch.setenv("INORBIT_KUKA_KUKA_ROBOT_ID", "99")
+    monkeypatch.setenv("INORBIT_KUKA_ROBOT_MODEL", "KMP 600P")
 
     cfg = KukaConnectorConfig(
         fleet_url="http://env-host:5000",
         username="env-user",
         password="env-pass",
         kuka_robot_id="99",
+        robot_model="KMP 600P",
     )
     assert cfg.fleet_url == "http://env-host:5000"
     assert cfg.kuka_robot_id == "99"

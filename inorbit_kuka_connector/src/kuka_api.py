@@ -96,15 +96,29 @@ class KukaFleetApi:
 
     # -- Write endpoints ---------------------------------------------------
 
-    async def robot_move(self, robot_id: str, node_code: str) -> dict:
-        """Move robot to a target node."""
-        return await self._post(
-            "robotMove",
-            {
-                "robotId": robot_id,
-                "nodeCode": node_code,
-            },
-        )
+    async def submit_move_mission(
+        self, robot_id: str, node_code: str, robot_model: str
+    ) -> tuple[dict, str]:
+        """Submit a MOVE mission to send the robot to a node.
+
+        Returns (api_response, mission_code).
+        """
+        mission_code = f"CONN-{uuid.uuid4().hex[:8]}"
+        body = {
+            "missionCode": mission_code,
+            "missionType": "MOVE",
+            "robotId": robot_id,
+            "robotModels": robot_model,
+            "taskList": [
+                {
+                    "taskCode": f"{mission_code}-T1",
+                    "taskType": "MOVE",
+                    "nodeCode": node_code,
+                }
+            ],
+        }
+        resp = await self._post("submitMission", body)
+        return resp, mission_code
 
     async def robot_lift(
         self,

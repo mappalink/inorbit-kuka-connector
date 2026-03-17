@@ -112,16 +112,26 @@ async def test_robot_query_all(api, httpx_mock):
 
 
 @pytest.mark.asyncio
-async def test_robot_move(api, httpx_mock):
+async def test_submit_move_mission(api, httpx_mock):
     httpx_mock.add_response(
-        url=f"{BASE_URL}/interfaces/api/amr/robotMove",
+        url=f"{BASE_URL}/interfaces/api/amr/submitMission",
         json={"success": True},
     )
-    result = await api.robot_move("1", "SITE-001-40")
-    assert result["success"] is True
+    resp, mission_code = await api.submit_move_mission(
+        "1", "SITE-001-40", "KMP 600P-EU-DIC diffDrive"
+    )
+    assert resp["success"] is True
+    assert mission_code.startswith("CONN-")
 
     req = httpx_mock.get_request()
-    assert json.loads(req.content) == {"robotId": "1", "nodeCode": "SITE-001-40"}
+    body = json.loads(req.content)
+    assert body["missionCode"] == mission_code
+    assert body["missionType"] == "MOVE"
+    assert body["robotId"] == "1"
+    assert body["robotModels"] == "KMP 600P-EU-DIC diffDrive"
+    assert len(body["taskList"]) == 1
+    assert body["taskList"][0]["taskType"] == "MOVE"
+    assert body["taskList"][0]["nodeCode"] == "SITE-001-40"
 
 
 @pytest.mark.asyncio
