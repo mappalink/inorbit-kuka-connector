@@ -237,6 +237,15 @@ class KukaAmrConnector(Connector):
                 resp = await self._api.recover_mission(code)
                 self._report_result(resp, result_fn)
 
+            elif script_name == "abort_missions":
+                code = self._current_kuka_mission_code
+                if not code:
+                    logger.warning("abort_missions: no active mission to cancel")
+                    result_fn(CommandResultCode.SUCCESS)
+                    return
+                resp = await self._api.cancel_mission(code)
+                self._report_result(resp, result_fn)
+
             elif script_name == "unlock":
                 resp = await self._api.unlock_robot(self._kuka_robot_id)
                 self._report_result(resp, result_fn)
