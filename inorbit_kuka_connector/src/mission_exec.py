@@ -70,19 +70,11 @@ class KukaWorkerPool(WorkerPool):
 
     async def pause_mission(self, mission_id):
         await super().pause_mission(mission_id)
-        code = self._get_kuka_mission_code()
-        if code:
-            await self._kuka_api.pause_mission(code)
-        else:
-            logger.warning("No active KUKA mission code — skipping KUKA pause")
+        await self._kuka_api.pause_mission(robot_id=self._kuka_robot_id)
 
     async def resume_mission(self, mission_id):
         await super().resume_mission(mission_id)
-        code = self._get_kuka_mission_code()
-        if code:
-            await self._kuka_api.recover_mission(code)
-        else:
-            logger.warning("No active KUKA mission code — skipping KUKA resume")
+        await self._kuka_api.recover_mission(robot_id=self._kuka_robot_id)
 
     async def abort_mission(self, mission_id):
         super().abort_mission(mission_id)

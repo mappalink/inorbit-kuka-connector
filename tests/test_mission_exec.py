@@ -229,33 +229,32 @@ class TestUpdateMissionAction:
 
 class TestKukaWorkerPool:
     @pytest.mark.asyncio
-    async def test_pause_calls_kuka_pause(self, mock_kuka_api):
+    async def test_pause_calls_kuka_pause_by_robot_id(self, mock_kuka_api):
         pool = KukaWorkerPool(
             kuka_api=mock_kuka_api,
             get_kuka_mission_code=lambda: "MC-100",
+            kuka_robot_id="1",
             api=MagicMock(),
             db=MagicMock(),
         )
-        with patch.object(pool, "pause_mission", wraps=pool.pause_mission):
-            # We need to mock the *parent* pause_mission so it doesn't
-            # actually touch the DB / worker internals.
-            with patch("inorbit_edge_executor.worker_pool.WorkerPool.pause_mission", AsyncMock()):
-                await pool.pause_mission("m-1")
+        with patch("inorbit_edge_executor.worker_pool.WorkerPool.pause_mission", AsyncMock()):
+            await pool.pause_mission("m-1")
 
-        mock_kuka_api.pause_mission.assert_awaited_once_with("MC-100")
+        mock_kuka_api.pause_mission.assert_awaited_once_with(robot_id="1")
 
     @pytest.mark.asyncio
-    async def test_resume_calls_kuka_recover(self, mock_kuka_api):
+    async def test_resume_calls_kuka_recover_by_robot_id(self, mock_kuka_api):
         pool = KukaWorkerPool(
             kuka_api=mock_kuka_api,
             get_kuka_mission_code=lambda: "MC-100",
+            kuka_robot_id="1",
             api=MagicMock(),
             db=MagicMock(),
         )
         with patch("inorbit_edge_executor.worker_pool.WorkerPool.resume_mission", AsyncMock()):
             await pool.resume_mission("m-1")
 
-        mock_kuka_api.recover_mission.assert_awaited_once_with("MC-100")
+        mock_kuka_api.recover_mission.assert_awaited_once_with(robot_id="1")
 
     @pytest.mark.asyncio
     async def test_abort_calls_kuka_cancel(self, mock_kuka_api):
@@ -271,23 +270,13 @@ class TestKukaWorkerPool:
         mock_kuka_api.cancel_mission.assert_awaited_once_with("MC-100")
 
     @pytest.mark.asyncio
-    async def test_skips_kuka_call_when_no_mission_code(self, mock_kuka_api):
+    async def test_abort_skips_kuka_cancel_when_no_mission_code(self, mock_kuka_api):
         pool = KukaWorkerPool(
             kuka_api=mock_kuka_api,
             get_kuka_mission_code=lambda: None,
             api=MagicMock(),
             db=MagicMock(),
         )
-        with patch("inorbit_edge_executor.worker_pool.WorkerPool.pause_mission", AsyncMock()):
-            await pool.pause_mission("m-1")
-
-        mock_kuka_api.pause_mission.assert_not_awaited()
-
-        with patch("inorbit_edge_executor.worker_pool.WorkerPool.resume_mission", AsyncMock()):
-            await pool.resume_mission("m-1")
-
-        mock_kuka_api.recover_mission.assert_not_awaited()
-
         with patch("inorbit_edge_executor.worker_pool.WorkerPool.abort_mission", MagicMock()):
             await pool.abort_mission("m-1")
 

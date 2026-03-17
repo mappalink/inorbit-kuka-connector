@@ -66,6 +66,15 @@ class KukaFleetApi:
         resp.raise_for_status()
         return resp.json()
 
+    async def _post_with_params(self, endpoint: str, params: dict) -> dict:
+        """POST to /interfaces/api/amr/<endpoint> with query params (no JSON body)."""
+        resp = await self._client.post(
+            f"{self._base_url}/interfaces/api/amr/{endpoint}",
+            params=params,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     # -- Read endpoints ----------------------------------------------------
 
     async def robot_query(self, robot_id: str | None = None) -> dict:
@@ -183,23 +192,27 @@ class KukaFleetApi:
             },
         )
 
-    async def pause_mission(self, mission_code: str) -> dict:
-        """Pause a running mission."""
-        return await self._post(
-            "pauseMission",
-            {
-                "missionCode": mission_code,
-            },
-        )
+    async def pause_mission(
+        self, *, mission_code: str | None = None, robot_id: str | None = None
+    ) -> dict:
+        """Pause a running mission (by mission code or robot ID)."""
+        params: dict = {}
+        if mission_code:
+            params["missionCode"] = mission_code
+        if robot_id:
+            params["robotId"] = robot_id
+        return await self._post_with_params("pauseMission", params)
 
-    async def recover_mission(self, mission_code: str) -> dict:
-        """Resume a paused mission."""
-        return await self._post(
-            "recoverMission",
-            {
-                "missionCode": mission_code,
-            },
-        )
+    async def recover_mission(
+        self, *, mission_code: str | None = None, robot_id: str | None = None
+    ) -> dict:
+        """Resume a paused mission (by mission code or robot ID)."""
+        params: dict = {}
+        if mission_code:
+            params["missionCode"] = mission_code
+        if robot_id:
+            params["robotId"] = robot_id
+        return await self._post_with_params("recoverMission", params)
 
     async def unlock_robot(self, robot_id: str) -> dict:
         """Unlock robot (abnormal recovery)."""

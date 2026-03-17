@@ -211,30 +211,20 @@ class KukaAmrConnector(Connector):
 
             elif script_name == "pause_mission":
                 mission_code = script_args["--mission_code"]
-                resp = await self._api.pause_mission(mission_code)
+                resp = await self._api.pause_mission(mission_code=mission_code)
                 self._report_result(resp, result_fn)
 
             elif script_name == "resume_mission":
                 mission_code = script_args["--mission_code"]
-                resp = await self._api.recover_mission(mission_code)
+                resp = await self._api.recover_mission(mission_code=mission_code)
                 self._report_result(resp, result_fn)
 
             elif script_name == "pauseRobot":
-                code = self._current_kuka_mission_code
-                if not code:
-                    logger.warning("pauseRobot: no active mission to pause")
-                    result_fn(CommandResultCode.SUCCESS)
-                    return
-                resp = await self._api.pause_mission(code)
+                resp = await self._api.pause_mission(robot_id=self._kuka_robot_id)
                 self._report_result(resp, result_fn)
 
             elif script_name == "resumeRobot":
-                code = self._current_kuka_mission_code
-                if not code:
-                    logger.warning("resumeRobot: no active mission to resume")
-                    result_fn(CommandResultCode.SUCCESS)
-                    return
-                resp = await self._api.recover_mission(code)
+                resp = await self._api.recover_mission(robot_id=self._kuka_robot_id)
                 self._report_result(resp, result_fn)
 
             elif script_name == "abort_missions":
@@ -308,16 +298,11 @@ class KukaAmrConnector(Connector):
     async def _handle_message(self, msg, result_fn):
         """Handle cloud-mode COMMAND_MESSAGE commands (inorbit_pause, inorbit_resume)."""
         if msg in ("inorbit_pause", "inorbit_resume"):
-            code = self._current_kuka_mission_code
-            if not code:
-                logger.warning("%s: no active mission to target", msg)
-                result_fn(CommandResultCode.FAILURE)
-                return
             try:
                 if msg == "inorbit_pause":
-                    resp = await self._api.pause_mission(code)
+                    resp = await self._api.pause_mission(robot_id=self._kuka_robot_id)
                 else:
-                    resp = await self._api.recover_mission(code)
+                    resp = await self._api.recover_mission(robot_id=self._kuka_robot_id)
                 self._report_result(resp, result_fn)
             except Exception as e:
                 logger.error("%s failed: %s", msg, e)

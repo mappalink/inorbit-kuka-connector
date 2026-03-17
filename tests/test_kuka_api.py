@@ -233,6 +233,65 @@ async def test_charge_robot(api, httpx_mock):
     assert body["lowestLevel"] == 5
 
 
+# -- Pause / Recover (query params) ----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pause_mission_by_code(api, httpx_mock):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/pauseMission?missionCode=MC-001",
+        json={"success": True},
+    )
+    result = await api.pause_mission(mission_code="MC-001")
+    assert result["success"] is True
+
+    req = httpx_mock.get_request()
+    assert req.url.params["missionCode"] == "MC-001"
+    assert req.content == b""
+
+
+@pytest.mark.asyncio
+async def test_pause_mission_by_robot_id(api, httpx_mock):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/pauseMission?robotId=1",
+        json={"success": True},
+    )
+    result = await api.pause_mission(robot_id="1")
+    assert result["success"] is True
+
+    req = httpx_mock.get_request()
+    assert req.url.params["robotId"] == "1"
+    assert req.content == b""
+
+
+@pytest.mark.asyncio
+async def test_recover_mission_by_code(api, httpx_mock):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/recoverMission?missionCode=MC-001",
+        json={"success": True},
+    )
+    result = await api.recover_mission(mission_code="MC-001")
+    assert result["success"] is True
+
+    req = httpx_mock.get_request()
+    assert req.url.params["missionCode"] == "MC-001"
+    assert req.content == b""
+
+
+@pytest.mark.asyncio
+async def test_recover_mission_by_robot_id(api, httpx_mock):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/recoverMission?robotId=1",
+        json={"success": True},
+    )
+    result = await api.recover_mission(robot_id="1")
+    assert result["success"] is True
+
+    req = httpx_mock.get_request()
+    assert req.url.params["robotId"] == "1"
+    assert req.content == b""
+
+
 # -- Map image -------------------------------------------------------------
 
 
