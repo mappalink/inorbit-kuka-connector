@@ -43,6 +43,7 @@ class KukaWorkerPool(WorkerPool):
         kuka_api: KukaFleetApi,
         get_kuka_mission_code: Callable[[], str | None],
         kuka_robot_id: str = "",
+        robot_model: str = "",
         nodes: list[tuple[str, float, float]] | None = None,
         node_margin_m: float = 0.05,
         *args,
@@ -51,6 +52,7 @@ class KukaWorkerPool(WorkerPool):
         self._kuka_api = kuka_api
         self._get_kuka_mission_code = get_kuka_mission_code
         self._kuka_robot_id = kuka_robot_id
+        self._robot_model = robot_model
         self._nodes = nodes or []
         self._node_margin_m = node_margin_m
         super().__init__(behavior_tree_builder=KukaTreeBuilder(), *args, **kwargs)
@@ -59,6 +61,7 @@ class KukaWorkerPool(WorkerPool):
         return KukaBehaviorTreeBuilderContext(
             kuka_api=self._kuka_api,
             kuka_robot_id=self._kuka_robot_id,
+            robot_model=self._robot_model,
             nodes=self._nodes,
             node_margin_m=self._node_margin_m,
         )
@@ -96,6 +99,7 @@ class KukaMissionExecutor:
         get_kuka_mission_code: Callable[[], str | None],
         database_file: str | None = None,
         kuka_robot_id: str = "",
+        robot_model: str = "",
         nodes: list[tuple[str, float, float]] | None = None,
         node_margin_m: float = 0.05,
     ):
@@ -104,6 +108,7 @@ class KukaMissionExecutor:
         self._kuka_api = kuka_api
         self._get_kuka_mission_code = get_kuka_mission_code
         self._kuka_robot_id = kuka_robot_id
+        self._robot_model = robot_model
         self._nodes = nodes or []
         self._node_margin_m = node_margin_m
         if database_file:
@@ -124,6 +129,7 @@ class KukaMissionExecutor:
             kuka_api=self._kuka_api,
             get_kuka_mission_code=self._get_kuka_mission_code,
             kuka_robot_id=self._kuka_robot_id,
+            robot_model=self._robot_model,
             nodes=self._nodes,
             node_margin_m=self._node_margin_m,
             api=self._inorbit_api,

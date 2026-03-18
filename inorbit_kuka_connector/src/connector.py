@@ -7,6 +7,7 @@
 import json
 import logging
 import math
+import time
 
 from inorbit_connector.connector import Connector, CommandResultCode
 from inorbit_connector.models import MapConfigTemp
@@ -53,6 +54,7 @@ class KukaAmrConnector(Connector):
         super().__init__(robot_id=robot_id, config=config)
         cfg = config.connector_config
         self._kuka_robot_id = cfg.kuka_robot_id
+        self._robot_model = cfg.robot_model
         self._api = KukaFleetApi(
             base_url=cfg.fleet_url,
             username=cfg.username,
@@ -64,6 +66,7 @@ class KukaAmrConnector(Connector):
         self._node_margin_m = cfg.node_margin_cm / 100.0
 
         self._current_kuka_mission_code: str | None = None
+        self._mission_code_submit_time: float = 0.0
         self._mission_executor = KukaMissionExecutor(
             robot_id=robot_id,
             inorbit_api=MissionInOrbitAPI(
@@ -74,6 +77,7 @@ class KukaAmrConnector(Connector):
             get_kuka_mission_code=lambda: self._current_kuka_mission_code,
             database_file=cfg.mission_database_file,
             kuka_robot_id=self._kuka_robot_id,
+            robot_model=self._robot_model,
             nodes=self._nodes,
             node_margin_m=self._node_margin_m,
         )
@@ -104,7 +108,21 @@ class KukaAmrConnector(Connector):
 
         robot = data["data"][0]
 
-        self._current_kuka_mission_code = robot.get("missionCode") or None
+        # Clear our tracked mission code when robot goes Idle, but only if
+        # enough time has passed since we submitted it (guard against clearing
+        # a just-submitted code before the robot starts executing).
+        _MISSION_CODE_GUARD_SECS = 5.0
+        status = robot.get("status")
+        if (
+            self._current_kuka_mission_code
+            and status in (3, 5)  # Idle or Charging
+            and (time.monotonic() - self._mission_code_submit_time) > _MISSION_CODE_GUARD_SECS
+        ):
+            logger.info(
+                "Robot idle/charging — clearing mission code %s",
+                self._current_kuka_mission_code,
+            )
+            self._current_kuka_mission_code = None
 
         # Coordinates: millimeter strings -> meters
         x_m = float(robot.get("x", 0)) / 1000.0
@@ -171,7 +189,12 @@ class KukaAmrConnector(Connector):
         try:
             if script_name == "move_to_node":
                 node_code = script_args["--node_code"]
-                resp = await self._api.robot_move(self._kuka_robot_id, node_code)
+                resp, mission_code = await self._api.submit_move_mission(
+                    self._kuka_robot_id, node_code, self._robot_model
+                )
+                if resp.get("success"):
+                    self._current_kuka_mission_code = mission_code
+                    self._mission_code_submit_time = time.monotonic()
                 self._report_result(resp, result_fn)
 
             elif script_name == "lift":
@@ -276,7 +299,12 @@ class KukaAmrConnector(Connector):
             node_code,
             distance,
         )
-        resp = await self._api.robot_move(self._kuka_robot_id, node_code)
+        resp, mission_code = await self._api.submit_move_mission(
+            self._kuka_robot_id, node_code, self._robot_model
+        )
+        if resp.get("success"):
+            self._current_kuka_mission_code = mission_code
+            self._mission_code_submit_time = time.monotonic()
         self._report_result(resp, result_fn)
 
     def _find_nearest_node(self, x: float, y: float) -> tuple[str | None, float]:

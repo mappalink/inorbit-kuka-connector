@@ -47,13 +47,14 @@ def _make_context(
     node_margin_m=5.0,
     robot_query_responses=None,
     kuka_robot_id="100",
+    robot_model="KMP 600P-EU-DIC diffDrive",
 ):
     """Build a KukaBehaviorTreeBuilderContext with mocked KUKA API.
 
     Pass nodes=[] explicitly to test with no nodes (default is SAMPLE_NODES).
     """
     kuka_api = AsyncMock()
-    kuka_api.robot_move = AsyncMock(return_value={"success": True})
+    kuka_api.submit_move_mission = AsyncMock(return_value=({"success": True}, "CONN-test1234"))
     kuka_api.robot_lift = AsyncMock(return_value={"success": True})
     kuka_api.robot_drop = AsyncMock(return_value={"success": True})
     kuka_api.robot_move_carry = AsyncMock(return_value={"success": True})
@@ -69,6 +70,7 @@ def _make_context(
     ctx = KukaBehaviorTreeBuilderContext(
         kuka_api=kuka_api,
         kuka_robot_id=kuka_robot_id,
+        robot_model=robot_model,
         nodes=SAMPLE_NODES if nodes is None else nodes,
         node_margin_m=node_margin_m,
     )
@@ -78,6 +80,8 @@ def _make_context(
     ctx.error_context = {}
     ctx.options = MissionRuntimeOptions()
     ctx.shared_memory = MissionRuntimeSharedMemory()
+    ctx.shared_memory.add(SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE, None)
+    ctx.shared_memory.add(SharedMemoryKeys.KUKA_ERROR_MESSAGE, None)
     ctx.mt = AsyncMock()
     ctx.robot_api = MagicMock()
     ctx.robot_api_factory = MagicMock()
@@ -108,28 +112,31 @@ class TestFindNearestNode:
 
 class TestKukaMoveToNodeNode:
     @pytest.mark.asyncio
-    async def test_calls_robot_move(self):
+    async def test_calls_submit_move_mission(self):
         ctx = _make_context()
         node = KukaMoveToNodeNode(ctx, node_code="NODE-001", label="test")
         ctx.shared_memory.freeze()
         await node._execute()
 
-        ctx.kuka_api.robot_move.assert_awaited_once_with("100", "NODE-001")
+        ctx.kuka_api.submit_move_mission.assert_awaited_once_with(
+            "100", "NODE-001", "KMP 600P-EU-DIC diffDrive"
+        )
+        assert ctx.shared_memory.get(SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE) == "CONN-test1234"
 
     @pytest.mark.asyncio
     async def test_raises_on_failure(self):
         ctx = _make_context()
-        ctx.kuka_api.robot_move = AsyncMock(return_value={"success": False})
+        ctx.kuka_api.submit_move_mission = AsyncMock(return_value=({"success": False}, "CONN-fail"))
         node = KukaMoveToNodeNode(ctx, node_code="NODE-001", label="test")
         ctx.shared_memory.freeze()
 
-        with pytest.raises(RuntimeError, match="robotMove failed"):
+        with pytest.raises(RuntimeError, match="submitMission failed"):
             await node._execute()
 
     @pytest.mark.asyncio
     async def test_raises_on_exception(self):
         ctx = _make_context()
-        ctx.kuka_api.robot_move = AsyncMock(side_effect=ConnectionError("offline"))
+        ctx.kuka_api.submit_move_mission = AsyncMock(side_effect=ConnectionError("offline"))
         node = KukaMoveToNodeNode(ctx, node_code="NODE-001", label="test")
         ctx.shared_memory.freeze()
 
@@ -362,10 +369,21 @@ class TestKukaActionNode:
 
 class TestKukaMissionAbortedNode:
     @pytest.mark.asyncio
-    async def test_cancels_active_kuka_mission(self):
+    async def test_cancels_from_shared_memory(self):
+        ctx = _make_context()
+        ctx._get_kuka_mission_code = lambda: None
+        node = KukaMissionAbortedNode(ctx, label="test")
+        ctx.shared_memory.freeze()
+        ctx.shared_memory.set(SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE, "MC-SM-1")
+
+        await node._execute()
+
+        ctx.kuka_api.cancel_mission.assert_awaited_once_with("MC-SM-1")
+
+    @pytest.mark.asyncio
+    async def test_cancels_from_getter_fallback(self):
         ctx = _make_context()
         ctx._get_kuka_mission_code = lambda: "MC-42"
-        ctx.shared_memory.add(SharedMemoryKeys.KUKA_ERROR_MESSAGE, None)
         node = KukaMissionAbortedNode(ctx, label="test")
         ctx.shared_memory.freeze()
 
@@ -377,7 +395,6 @@ class TestKukaMissionAbortedNode:
     async def test_skips_cancel_when_no_mission(self):
         ctx = _make_context()
         ctx._get_kuka_mission_code = lambda: None
-        ctx.shared_memory.add(SharedMemoryKeys.KUKA_ERROR_MESSAGE, None)
         node = KukaMissionAbortedNode(ctx, label="test")
         ctx.shared_memory.freeze()
 

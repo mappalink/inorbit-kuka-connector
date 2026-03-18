@@ -60,6 +60,7 @@ ACTION_NAVIGATE_TO = "NavigateTo-000000"
 
 class SharedMemoryKeys(StrEnum):
     KUKA_ERROR_MESSAGE = "kuka_error_message"
+    KUKA_ACTIVE_MISSION_CODE = "kuka_active_mission_code"
 
 
 class KukaBehaviorTreeBuilderContext(BehaviorTreeBuilderContext):
@@ -69,14 +70,16 @@ class KukaBehaviorTreeBuilderContext(BehaviorTreeBuilderContext):
         self,
         kuka_api: KukaFleetApi,
         kuka_robot_id: str,
-        nodes: list[tuple[str, float, float]],
-        node_margin_m: float,
+        robot_model: str = "",
+        nodes: list[tuple[str, float, float]] | None = None,
+        node_margin_m: float = 0.05,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self._kuka_api = kuka_api
         self._kuka_robot_id = kuka_robot_id
-        self._nodes = nodes
+        self._robot_model = robot_model
+        self._nodes = nodes or []
         self._node_margin_m = node_margin_m
 
     @property
@@ -90,6 +93,10 @@ class KukaBehaviorTreeBuilderContext(BehaviorTreeBuilderContext):
     @property
     def nodes(self) -> list[tuple[str, float, float]]:
         return self._nodes
+
+    @property
+    def robot_model(self) -> str:
+        return self._robot_model
 
     @property
     def node_margin_m(self) -> float:
@@ -161,6 +168,13 @@ class WaitForKukaCompletionNode(BehaviorTree):
                             self._kuka_robot_id,
                             status,
                         )
+                        try:
+                            if self._shared_memory.get(SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE):
+                                self._shared_memory.set(
+                                    SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE, None
+                                )
+                        except Exception:
+                            pass
                         return
 
                     if status == _STATUS_ABNORMAL:
@@ -196,7 +210,7 @@ class WaitForKukaCompletionNode(BehaviorTree):
 
 
 class KukaMoveToNodeNode(BehaviorTree):
-    """Calls robotMove to send the robot to a KUKA node."""
+    """Submits a MOVE mission to send the robot to a KUKA node."""
 
     def __init__(
         self,
@@ -207,28 +221,34 @@ class KukaMoveToNodeNode(BehaviorTree):
         super().__init__(**kwargs)
         self._kuka_api = context.kuka_api
         self._kuka_robot_id = context.kuka_robot_id
+        self._robot_model = context.robot_model
         self._shared_memory = context.shared_memory
         self._node_code = node_code
 
         self._shared_memory.add(SharedMemoryKeys.KUKA_ERROR_MESSAGE, None)
+        self._shared_memory.add(SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE, None)
 
     async def _execute(self):
         logger.info(
-            "Sending KUKA robot %s to node %s",
+            "Submitting MOVE mission for KUKA robot %s to node %s",
             self._kuka_robot_id,
             self._node_code,
         )
         try:
-            resp = await self._kuka_api.robot_move(self._kuka_robot_id, self._node_code)
+            resp, mission_code = await self._kuka_api.submit_move_mission(
+                self._kuka_robot_id, self._node_code, self._robot_model
+            )
             if not resp.get("success"):
-                error_msg = f"robotMove failed: {resp}"
+                error_msg = f"submitMission failed: {resp}"
                 logger.error(error_msg)
                 self._shared_memory.set(SharedMemoryKeys.KUKA_ERROR_MESSAGE, error_msg)
                 raise RuntimeError(error_msg)
+            self._shared_memory.set(SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE, mission_code)
+            logger.info("MOVE mission %s submitted", mission_code)
         except RuntimeError:
             raise
         except Exception as e:
-            error_msg = f"robotMove to {self._node_code} failed: {e}"
+            error_msg = f"submitMission to {self._node_code} failed: {e}"
             logger.error(error_msg)
             self._shared_memory.set(SharedMemoryKeys.KUKA_ERROR_MESSAGE, error_msg)
             raise RuntimeError(error_msg) from e
@@ -350,15 +370,18 @@ class KukaMissionAbortedNode(MissionAbortedNode):
         if error_message:
             logger.error("KUKA mission aborted: %s", error_message)
 
-        # Try to cancel the active KUKA mission
-        if self._get_kuka_mission_code:
+        # Try to cancel the active KUKA mission — prefer shared memory code
+        # (set by KukaMoveToNodeNode), fall back to connector-level getter
+        code = None
+        code = self._shared_memory.get(SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE)
+        if not code and self._get_kuka_mission_code:
             code = self._get_kuka_mission_code()
-            if code:
-                try:
-                    await self._kuka_api.cancel_mission(code)
-                    logger.info("Cancelled KUKA mission %s", code)
-                except Exception as e:
-                    logger.warning("Failed to cancel KUKA mission %s: %s", code, e)
+        if code:
+            try:
+                await self._kuka_api.cancel_mission(code)
+                logger.info("Cancelled KUKA mission %s", code)
+            except Exception as e:
+                logger.warning("Failed to cancel KUKA mission %s: %s", code, e)
 
         await super()._execute()
 
@@ -410,7 +433,7 @@ class KukaNodeFromStepBuilder(NodeFromStepBuilder):
             KukaMoveToNodeNode(
                 self._kuka_context,
                 node_code=node_code,
-                label=f"robotMove to {node_code}",
+                label=f"submitMission MOVE to {node_code}",
             )
         )
         sequence.add_node(
@@ -446,7 +469,7 @@ class KukaNodeFromStepBuilder(NodeFromStepBuilder):
                 KukaMoveToNodeNode(
                     self._kuka_context,
                     node_code=node_code,
-                    label=f"robotMove to {node_code}",
+                    label=f"submitMission MOVE to {node_code}",
                 )
             )
             sequence.add_node(
