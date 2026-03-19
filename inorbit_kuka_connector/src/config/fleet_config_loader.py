@@ -19,6 +19,7 @@ KUKA_FIELDS = [
     "username",
     "password",
     "kuka_robot_id",
+    "robot_model",
     "poll_frequency",
     "map_image_path",
     "map_resolution",
