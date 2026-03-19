@@ -37,7 +37,6 @@ class KukaTreeBuilder(DefaultTreeBuilder):
         tree.add_node(MissionInProgressNode(context, label="mission start"))
 
         step_builder = KukaNodeFromStepBuilder(context)
-        step_builder.add_step_node_decorator(self._build_step_decorator_for_context(context))
 
         for ix, step in enumerate(mission.definition.steps):
             try:
