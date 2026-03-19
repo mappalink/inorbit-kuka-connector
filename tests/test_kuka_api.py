@@ -127,11 +127,15 @@ async def test_submit_move_mission(api, httpx_mock):
     body = json.loads(req.content)
     assert body["missionCode"] == mission_code
     assert body["missionType"] == "MOVE"
-    assert body["robotId"] == "1"
-    assert body["robotModels"] == "KMP 600P-EU-DIC diffDrive"
-    assert len(body["taskList"]) == 1
-    assert body["taskList"][0]["taskType"] == "MOVE"
-    assert body["taskList"][0]["nodeCode"] == "SITE-001-40"
+    assert body["robotIds"] == ["1"]
+    assert body["robotModels"] == ["KMP 600P-EU-DIC diffDrive"]
+    assert body["robotType"] == "LIFT"
+    assert body["priority"] == 1
+    assert "requestId" in body
+    assert len(body["missionData"]) == 1
+    assert body["missionData"][0]["position"] == "SITE-001-40"
+    assert body["missionData"][0]["type"] == "NODE_POINT"
+    assert body["missionData"][0]["sequence"] == 1
 
 
 @pytest.mark.asyncio

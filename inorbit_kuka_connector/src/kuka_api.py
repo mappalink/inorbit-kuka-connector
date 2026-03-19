@@ -105,15 +105,20 @@ class KukaFleetApi:
         """
         mission_code = f"CONN-{uuid.uuid4().hex[:8]}"
         body = {
+            "requestId": str(uuid.uuid4()),
             "missionCode": mission_code,
             "missionType": "MOVE",
-            "robotId": robot_id,
-            "robotModels": robot_model,
-            "taskList": [
+            "robotIds": [robot_id],
+            "robotModels": [robot_model],
+            "robotType": "LIFT",
+            "priority": 1,
+            "missionData": [
                 {
-                    "taskCode": f"{mission_code}-T1",
-                    "taskType": "MOVE",
-                    "nodeCode": node_code,
+                    "sequence": 1,
+                    "position": node_code,
+                    "type": "NODE_POINT",
+                    "passStrategy": "AUTO",
+                    "waitingMillis": 0,
                 }
             ],
         }
