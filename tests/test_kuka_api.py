@@ -125,6 +125,7 @@ async def test_submit_move_mission(api, httpx_mock):
 
     req = httpx_mock.get_request()
     body = json.loads(req.content)
+    assert body["orgId"] == "UNIVERSAL"
     assert body["missionCode"] == mission_code
     assert body["missionType"] == "MOVE"
     assert body["robotIds"] == ["1"]

@@ -105,6 +105,7 @@ class KukaFleetApi:
         """
         mission_code = f"CONN-{uuid.uuid4().hex[:8]}"
         body = {
+            "orgId": "UNIVERSAL",
             "requestId": str(uuid.uuid4()),
             "missionCode": mission_code,
             "missionType": "MOVE",
