@@ -4,7 +4,7 @@
 
 [project]
 name = "inorbit-kuka-connector"
-version = "0.1.9"
+version = "0.1.10"
 description = "InOrbit Edge connector for KUKA KMP 600P AMRs via KUKA.AMR Fleet"
 readme = "README.md"
 requires-python = ">=3.12"
