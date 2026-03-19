@@ -99,7 +99,19 @@ class KukaFleetApi:
     async def submit_move_mission(
         self, robot_id: str, node_code: str, robot_model: str
     ) -> tuple[dict, str]:
-        """Submit a MOVE mission to send the robot to a node.
+        """Submit a MOVE mission to send the robot to a single node.
+
+        Returns (api_response, mission_code).
+        """
+        return await self.submit_multi_move_mission(robot_id, [node_code], robot_model)
+
+    async def submit_multi_move_mission(
+        self, robot_id: str, node_codes: list[str], robot_model: str
+    ) -> tuple[dict, str]:
+        """Submit a MOVE mission with one or more nodes.
+
+        Multiple nodes are sequenced as missionData entries — the KUKA Fleet
+        Manager executes them in order within a single mission.
 
         Returns (api_response, mission_code).
         """
@@ -115,12 +127,13 @@ class KukaFleetApi:
             "priority": 1,
             "missionData": [
                 {
-                    "sequence": 1,
+                    "sequence": i + 1,
                     "position": node_code,
                     "type": "NODE_POINT",
                     "passStrategy": "AUTO",
                     "waitingMillis": 0,
                 }
+                for i, node_code in enumerate(node_codes)
             ],
         }
         resp = await self._post("submitMission", body)

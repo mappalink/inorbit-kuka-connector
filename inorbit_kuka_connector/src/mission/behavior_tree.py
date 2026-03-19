@@ -263,6 +263,69 @@ class KukaMoveToNodeNode(BehaviorTree):
         return KukaMoveToNodeNode(context, node_code=node_code, **kwargs)
 
 
+class KukaMultiMoveNode(BehaviorTree):
+    """Submits a single MOVE mission with multiple nodes.
+
+    The KUKA Fleet Manager sequences all nodes within one mission,
+    allowing route optimization and avoiding per-step overhead.
+    """
+
+    def __init__(
+        self,
+        context: KukaBehaviorTreeBuilderContext,
+        node_codes: list[str],
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self._kuka_api = context.kuka_api
+        self._kuka_robot_id = context.kuka_robot_id
+        self._robot_model = context.robot_model
+        self._shared_memory = context.shared_memory
+        self._node_codes = node_codes
+
+        self._shared_memory.add(SharedMemoryKeys.KUKA_ERROR_MESSAGE, None)
+        self._shared_memory.add(SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE, None)
+
+    async def _execute(self):
+        route = " -> ".join(self._node_codes)
+        logger.info(
+            "Submitting multi-node MOVE mission for KUKA robot %s: %s",
+            self._kuka_robot_id,
+            route,
+        )
+        try:
+            resp, mission_code = await self._kuka_api.submit_multi_move_mission(
+                self._kuka_robot_id, self._node_codes, self._robot_model
+            )
+            if not resp.get("success"):
+                error_msg = f"submitMission failed: {resp}"
+                logger.error(error_msg)
+                self._shared_memory.set(SharedMemoryKeys.KUKA_ERROR_MESSAGE, error_msg)
+                raise RuntimeError(error_msg)
+            self._shared_memory.set(SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE, mission_code)
+            logger.info(
+                "Multi-node MOVE mission %s submitted (%d nodes)",
+                mission_code,
+                len(self._node_codes),
+            )
+        except RuntimeError:
+            raise
+        except Exception as e:
+            error_msg = f"submitMission multi-move failed: {e}"
+            logger.error(error_msg)
+            self._shared_memory.set(SharedMemoryKeys.KUKA_ERROR_MESSAGE, error_msg)
+            raise RuntimeError(error_msg) from e
+
+    def dump_object(self):
+        obj = super().dump_object()
+        obj["node_codes"] = self._node_codes
+        return obj
+
+    @classmethod
+    def from_object(cls, context, node_codes, **kwargs):
+        return KukaMultiMoveNode(context, node_codes=node_codes, **kwargs)
+
+
 # ---------------------------------------------------------------------------
 # Generic KUKA action node (lift, drop, move_carry, charge)
 # ---------------------------------------------------------------------------
@@ -539,6 +602,7 @@ class KukaNodeFromStepBuilder(NodeFromStepBuilder):
 # Register node types for serialization/deserialization (crash recovery)
 kuka_node_types = [
     KukaMoveToNodeNode,
+    KukaMultiMoveNode,
     KukaActionNode,
     WaitForKukaCompletionNode,
     KukaMissionAbortedNode,
