@@ -445,7 +445,7 @@ wheels = [
 
 [[package]]
 name = "inorbit-kuka-connector"
-version = "0.1.10"
+version = "0.1.11"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
