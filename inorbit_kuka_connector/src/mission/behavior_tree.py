@@ -267,14 +267,21 @@ class KukaMoveToNodeNode(BehaviorTree):
 # Generic KUKA action node (lift, drop, move_carry, charge)
 # ---------------------------------------------------------------------------
 
-# Maps action names to (api_method_name, required_arg_keys)
+# Maps action names to (api_method_name, required_arg_keys).
+# Includes both short names and ActionDefinition IDs (kuka-* prefixed).
 _KUKA_ACTION_MAP = {
     "lift": ("robot_lift", []),
+    "kuka-lift": ("robot_lift", []),
     "container_lift": ("robot_lift", ["container_code"]),
+    "kuka-container-lift": ("robot_lift", ["container_code"]),
     "drop": ("robot_drop", []),
+    "kuka-drop": ("robot_drop", []),
     "container_drop": ("robot_drop", ["node_code"]),
+    "kuka-container-drop": ("robot_drop", ["node_code"]),
     "move_carry": ("robot_move_carry", ["container_code", "node_code"]),
+    "kuka-move-carry": ("robot_move_carry", ["container_code", "node_code"]),
     "charge": ("charge_robot", []),
+    "kuka-charge": ("charge_robot", []),
     "unlock": ("unlock_robot", []),
 }
 
@@ -465,6 +472,29 @@ class KukaNodeFromStepBuilder(NodeFromStepBuilder):
                 )
 
             sequence = BehaviorTreeSequential(label=step.label or f"Navigate to {node_code}")
+            sequence.add_node(
+                KukaMoveToNodeNode(
+                    self._kuka_context,
+                    node_code=node_code,
+                    label=f"submitMission MOVE to {node_code}",
+                )
+            )
+            sequence.add_node(
+                WaitForKukaCompletionNode(
+                    self._kuka_context,
+                    timeout_secs=step.timeout_secs,
+                    label=f"Wait for arrival at {node_code}",
+                )
+            )
+            return sequence
+
+        # Move-to-node action (from ActionDefinition "kuka-move-to-node")
+        if action_id == "kuka-move-to-node":
+            node_code = arguments.get("--node_code", "")
+            if not node_code:
+                raise RuntimeError("kuka-move-to-node missing --node_code argument")
+
+            sequence = BehaviorTreeSequential(label=step.label or f"Move to {node_code}")
             sequence.add_node(
                 KukaMoveToNodeNode(
                     self._kuka_context,
