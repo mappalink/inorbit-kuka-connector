@@ -257,27 +257,20 @@ class TestKukaWorkerPool:
         mock_kuka_api.recover_mission.assert_awaited_once_with(robot_id="1")
 
     @pytest.mark.asyncio
-    async def test_abort_calls_kuka_cancel(self, mock_kuka_api):
+    async def test_abort_delegates_to_super(self, mock_kuka_api):
+        """abort_mission delegates to WorkerPool.abort_mission (which triggers
+        the behavior tree's KukaMissionAbortedNode to cancel via shared memory).
+        It does NOT call cancel_mission directly."""
         pool = KukaWorkerPool(
             kuka_api=mock_kuka_api,
             get_kuka_mission_code=lambda: "MC-100",
             api=MagicMock(),
             db=MagicMock(),
         )
-        with patch("inorbit_edge_executor.worker_pool.WorkerPool.abort_mission", MagicMock()):
+        with patch(
+            "inorbit_edge_executor.worker_pool.WorkerPool.abort_mission", MagicMock()
+        ) as mock_super:
             await pool.abort_mission("m-1")
 
-        mock_kuka_api.cancel_mission.assert_awaited_once_with("MC-100")
-
-    @pytest.mark.asyncio
-    async def test_abort_skips_kuka_cancel_when_no_mission_code(self, mock_kuka_api):
-        pool = KukaWorkerPool(
-            kuka_api=mock_kuka_api,
-            get_kuka_mission_code=lambda: None,
-            api=MagicMock(),
-            db=MagicMock(),
-        )
-        with patch("inorbit_edge_executor.worker_pool.WorkerPool.abort_mission", MagicMock()):
-            await pool.abort_mission("m-1")
-
+        mock_super.assert_called_once_with("m-1")
         mock_kuka_api.cancel_mission.assert_not_awaited()

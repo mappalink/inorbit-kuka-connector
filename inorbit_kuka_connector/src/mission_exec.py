@@ -80,12 +80,9 @@ class KukaWorkerPool(WorkerPool):
         await self._kuka_api.recover_mission(robot_id=self._kuka_robot_id)
 
     async def abort_mission(self, mission_id):
+        # The behavior tree's KukaMissionAbortedNode handles the actual KUKA
+        # cancel via shared memory. Just trigger the tree cancellation here.
         super().abort_mission(mission_id)
-        code = self._get_kuka_mission_code()
-        if code:
-            await self._kuka_api.cancel_mission(code)
-        else:
-            logger.warning("No active KUKA mission code — skipping KUKA cancel")
 
 
 class KukaMissionExecutor:
@@ -219,8 +216,35 @@ class KukaMissionExecutor:
                 raise ValueError(f"Unknown action: {action}")
             options["result_function"](CommandResultCode.SUCCESS)
         except Exception as e:
-            logger.error("Failed to update mission %s (action=%s): %s", mission_id, action, e)
-            options["result_function"](
-                CommandResultCode.FAILURE,
-                execution_status_details=str(e),
+            # WorkerPool has no matching mission (e.g. cloud mode) — fall back
+            # to robot-level pause/resume via KUKA API directly.
+            logger.warning(
+                "WorkerPool update failed for mission %s (action=%s): %s "
+                "— falling back to robot-level %s",
+                mission_id,
+                action,
+                e,
+                "pause" if action == "pause" else "resume",
             )
+            try:
+                if action == "pause":
+                    resp = await self._kuka_api.pause_mission(robot_id=self._kuka_robot_id)
+                elif action == "resume":
+                    resp = await self._kuka_api.recover_mission(robot_id=self._kuka_robot_id)
+                else:
+                    raise ValueError(f"Unknown action: {action}")
+                if resp.get("success"):
+                    logger.info("Robot-level %s succeeded (fallback)", action)
+                    options["result_function"](CommandResultCode.SUCCESS)
+                else:
+                    logger.warning("KUKA API returned failure: %s", resp)
+                    options["result_function"](
+                        CommandResultCode.FAILURE,
+                        execution_status_details=str(resp),
+                    )
+            except Exception as fallback_err:
+                logger.error("Robot-level %s fallback also failed: %s", action, fallback_err)
+                options["result_function"](
+                    CommandResultCode.FAILURE,
+                    execution_status_details=str(fallback_err),
+                )
