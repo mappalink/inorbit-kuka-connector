@@ -24,21 +24,21 @@ class TestScriptArgsParsing:
     """args[1] from COMMAND_CUSTOM_COMMAND is a list of alternating key-value strings."""
 
     def test_dict_conversion(self):
-        args_list = ["--node_code", "SITE-001-40", "--extra", "foo"]
+        args_list = ["node_code", "SITE-001-40", "extra", "foo"]
         script_args = dict(zip(args_list[::2], args_list[1::2]))
-        assert script_args["--node_code"] == "SITE-001-40"
-        assert script_args["--extra"] == "foo"
+        assert script_args["node_code"] == "SITE-001-40"
+        assert script_args["extra"] == "foo"
 
     def test_missing_key_raises(self):
-        args_list = ["--other", "value"]
+        args_list = ["other", "value"]
         script_args = dict(zip(args_list[::2], args_list[1::2]))
         with pytest.raises(KeyError):
-            _ = script_args["--node_code"]
+            _ = script_args["node_code"]
 
     def test_single_pair(self):
-        args_list = ["--mission_code", "MC-001"]
+        args_list = ["mission_code", "MC-001"]
         script_args = dict(zip(args_list[::2], args_list[1::2]))
-        assert script_args["--mission_code"] == "MC-001"
+        assert script_args["mission_code"] == "MC-001"
 
     def test_empty_args(self):
         args_list = []

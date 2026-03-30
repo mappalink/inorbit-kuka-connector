@@ -146,6 +146,7 @@ class WaitForKukaCompletionNode(BehaviorTree):
     async def _execute(self):
         logger.info("Waiting for KUKA robot %s to complete task", self._kuka_robot_id)
         elapsed = 0.0
+        seen_executing = False
 
         while True:
             if self._timeout_secs and elapsed >= self._timeout_secs:
@@ -162,20 +163,36 @@ class WaitForKukaCompletionNode(BehaviorTree):
                     robot = data["data"][0]
                     status = robot.get("status")
 
+                    if status == _STATUS_EXECUTING:
+                        if not seen_executing:
+                            logger.info(
+                                "KUKA robot %s started executing",
+                                self._kuka_robot_id,
+                            )
+                            seen_executing = True
+
                     if status in (_STATUS_IDLE, _STATUS_CHARGING):
-                        logger.info(
-                            "KUKA robot %s completed (status=%s)",
+                        if seen_executing:
+                            logger.info(
+                                "KUKA robot %s completed (status=%s)",
+                                self._kuka_robot_id,
+                                status,
+                            )
+                            try:
+                                if self._shared_memory.get(
+                                    SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE
+                                ):
+                                    self._shared_memory.set(
+                                        SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE, None
+                                    )
+                            except Exception:
+                                pass
+                            return
+                        # Robot still Idle after submission — hasn't started yet
+                        logger.debug(
+                            "KUKA robot %s still idle, waiting for execution to start...",
                             self._kuka_robot_id,
-                            status,
                         )
-                        try:
-                            if self._shared_memory.get(SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE):
-                                self._shared_memory.set(
-                                    SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE, None
-                                )
-                        except Exception:
-                            pass
-                        return
 
                     if status == _STATUS_ABNORMAL:
                         error_msg = (
@@ -186,11 +203,12 @@ class WaitForKukaCompletionNode(BehaviorTree):
                         self._shared_memory.set(SharedMemoryKeys.KUKA_ERROR_MESSAGE, error_msg)
                         raise RuntimeError(error_msg)
 
-                    logger.debug(
-                        "KUKA robot %s status=%s, waiting...",
-                        self._kuka_robot_id,
-                        status,
-                    )
+                    if seen_executing:
+                        logger.debug(
+                            "KUKA robot %s status=%s, waiting...",
+                            self._kuka_robot_id,
+                            status,
+                        )
             except RuntimeError:
                 raise
             except Exception as e:
@@ -553,7 +571,7 @@ class KukaNodeFromStepBuilder(NodeFromStepBuilder):
 
         # Move-to-node action (from ActionDefinition "kuka-move-to-node")
         if action_id == "kuka-move-to-node":
-            node_code = arguments.get("--node_code", "")
+            node_code = arguments.get("node_code", "")
             if not node_code:
                 raise RuntimeError("kuka-move-to-node missing --node_code argument")
 

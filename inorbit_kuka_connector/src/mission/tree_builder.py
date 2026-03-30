@@ -49,7 +49,7 @@ def _extract_node_code(step, context: KukaBehaviorTreeBuilderContext) -> str | N
         action_id = step.action_id
         arguments = step.arguments or {}
         if action_id == "kuka-move-to-node":
-            return arguments.get("--node_code")
+            return arguments.get("node_code")
 
     if isinstance(step, MissionStepPoseWaypoint):
         wp = step.waypoint

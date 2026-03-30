@@ -188,7 +188,7 @@ class KukaAmrConnector(Connector):
     async def _handle_custom_command(self, script_name, script_args: dict, result_fn):
         try:
             if script_name == "move_to_node":
-                node_code = script_args["--node_code"]
+                node_code = script_args["node_code"]
                 resp, mission_code = await self._api.submit_move_mission(
                     self._kuka_robot_id, node_code, self._robot_model
                 )
@@ -202,13 +202,13 @@ class KukaAmrConnector(Connector):
                 self._report_result(resp, result_fn)
 
             elif script_name == "container_lift":
-                container_code = script_args["--container_code"]
+                container_code = script_args["container_code"]
                 resp = await self._api.robot_lift(self._kuka_robot_id, container_code, move_lift=1)
                 self._report_result(resp, result_fn)
 
             elif script_name == "move_carry":
-                container_code = script_args["--container_code"]
-                node_code = script_args["--node_code"]
+                container_code = script_args["container_code"]
+                node_code = script_args["node_code"]
                 resp = await self._api.robot_move_carry(
                     self._kuka_robot_id, container_code, node_code
                 )
@@ -219,7 +219,7 @@ class KukaAmrConnector(Connector):
                 self._report_result(resp, result_fn)
 
             elif script_name == "container_drop":
-                node_code = script_args["--node_code"]
+                node_code = script_args["node_code"]
                 resp = await self._api.robot_drop(self._kuka_robot_id, node_code)
                 self._report_result(resp, result_fn)
 
@@ -228,17 +228,17 @@ class KukaAmrConnector(Connector):
                 self._report_result(resp, result_fn)
 
             elif script_name == "cancel_mission":
-                mission_code = script_args["--mission_code"]
+                mission_code = script_args["mission_code"]
                 resp = await self._api.cancel_mission(mission_code)
                 self._report_result(resp, result_fn)
 
             elif script_name == "pause_mission":
-                mission_code = script_args["--mission_code"]
+                mission_code = script_args["mission_code"]
                 resp = await self._api.pause_mission(mission_code=mission_code)
                 self._report_result(resp, result_fn)
 
             elif script_name == "resume_mission":
-                mission_code = script_args["--mission_code"]
+                mission_code = script_args["mission_code"]
                 resp = await self._api.recover_mission(mission_code=mission_code)
                 self._report_result(resp, result_fn)
 
