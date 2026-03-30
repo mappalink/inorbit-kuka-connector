@@ -174,6 +174,7 @@ class TestWaitForKukaCompletionNode:
     async def test_returns_when_charging(self):
         ctx = _make_context(
             robot_query_responses=[
+                {"success": True, "data": [{"status": 4}]},  # executing
                 {"success": True, "data": [{"status": 5}]},  # charging
             ]
         )
@@ -216,6 +217,7 @@ class TestWaitForKukaCompletionNode:
     async def test_survives_poll_error(self):
         ctx = _make_context(
             robot_query_responses=[
+                {"success": True, "data": [{"status": 4}]},  # executing
                 ConnectionError("network blip"),
                 {"success": True, "data": [{"status": 3}]},  # idle
             ]
@@ -224,7 +226,7 @@ class TestWaitForKukaCompletionNode:
         ctx.shared_memory.freeze()
         await node._execute()
 
-        assert ctx.kuka_api.robot_query.await_count == 2
+        assert ctx.kuka_api.robot_query.await_count == 3
 
 
 # ---------------------------------------------------------------------------
