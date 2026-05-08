@@ -8,7 +8,9 @@ import json
 import logging
 import math
 import time
+from typing import override
 
+from inorbit_connector.commands import parse_custom_command_args
 from inorbit_connector.connector import Connector, CommandResultCode
 from inorbit_connector.models import MapConfigTemp
 from inorbit_edge.robot import COMMAND_CUSTOM_COMMAND, COMMAND_MESSAGE, COMMAND_NAV_GOAL
@@ -84,11 +86,13 @@ class KukaAmrConnector(Connector):
 
     # -- Lifecycle ---------------------------------------------------------
 
+    @override
     async def _connect(self) -> None:
         await self._api.login()
         await self._mission_executor.initialize()
         logger.info("Connected to KUKA Fleet Manager for robot %s", self._kuka_robot_id)
 
+    @override
     async def _disconnect(self) -> None:
         await self._mission_executor.shutdown()
         await self._api.close()
@@ -96,6 +100,7 @@ class KukaAmrConnector(Connector):
 
     # -- Main loop (~1 Hz) ------------------------------------------------
 
+    @override
     async def _execution_loop(self) -> None:
         try:
             data = await self._api.robot_query(self._kuka_robot_id)
@@ -159,6 +164,7 @@ class KukaAmrConnector(Connector):
 
     # -- Command handler ---------------------------------------------------
 
+    @override
     async def _inorbit_command_handler(self, command_name, args, options):
         result_fn = options["result_function"]
 
@@ -166,9 +172,7 @@ class KukaAmrConnector(Connector):
             await self._handle_nav_goal(args[0], result_fn)
 
         elif command_name == COMMAND_CUSTOM_COMMAND:
-            script_name = args[0]
-            args_list = list(args[1]) if len(args) > 1 else []
-            script_args = dict(zip(args_list[::2], args_list[1::2]))
+            script_name, script_args = parse_custom_command_args(args)
 
             # Try edge-executor mission commands first
             handled = await self._mission_executor.handle_command(script_name, script_args, options)
@@ -341,6 +345,7 @@ class KukaAmrConnector(Connector):
 
     # -- Map ---------------------------------------------------------------
 
+    @override
     async def fetch_map(self, frame_id: str) -> MapConfigTemp | None:
         """Fetch the SLAM map image from the KUKA fileserver."""
         if not self._map_image_path:
