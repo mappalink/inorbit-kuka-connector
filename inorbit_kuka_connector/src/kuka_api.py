@@ -49,31 +49,34 @@ class KukaFleetApi:
 
     # -- Standard Interface helpers ----------------------------------------
 
-    async def _post(self, endpoint: str, json: Any = None) -> dict:
-        """POST to /interfaces/api/amr/<endpoint>."""
-        resp = await self._client.post(
-            f"{self._base_url}/interfaces/api/amr/{endpoint}",
-            json=json or {},
-        )
+    async def _send(self, method: str, endpoint: str, **kwargs: Any) -> dict:
+        """Call /interfaces/api/amr/<endpoint>, re-authenticating once on 401.
+
+        The Interface Manager issues JWT tokens with a finite lifetime
+        (around 7 days). Once a token expires the API answers 401 to every
+        request; rather than failing every call until the connector is
+        restarted, transparently log in again and retry the request once.
+        """
+        url = f"{self._base_url}/interfaces/api/amr/{endpoint}"
+        resp = await self._client.request(method, url, **kwargs)
+        if resp.status_code == 401:
+            logger.warning("KUKA API token rejected (401); re-authenticating")
+            await self.login()
+            resp = await self._client.request(method, url, **kwargs)
         resp.raise_for_status()
         return resp.json()
+
+    async def _post(self, endpoint: str, json: Any = None) -> dict:
+        """POST to /interfaces/api/amr/<endpoint>."""
+        return await self._send("POST", endpoint, json=json or {})
 
     async def _get(self, endpoint: str) -> dict:
         """GET to /interfaces/api/amr/<endpoint>."""
-        resp = await self._client.get(
-            f"{self._base_url}/interfaces/api/amr/{endpoint}",
-        )
-        resp.raise_for_status()
-        return resp.json()
+        return await self._send("GET", endpoint)
 
     async def _post_with_params(self, endpoint: str, params: dict) -> dict:
         """POST to /interfaces/api/amr/<endpoint> with query params (no JSON body)."""
-        resp = await self._client.post(
-            f"{self._base_url}/interfaces/api/amr/{endpoint}",
-            params=params,
-        )
-        resp.raise_for_status()
-        return resp.json()
+        return await self._send("POST", endpoint, params=params)
 
     # -- Read endpoints ----------------------------------------------------
 

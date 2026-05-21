@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 
+import httpx
 import pytest
 import pytest_asyncio
 
@@ -40,6 +41,50 @@ async def test_login_sets_token(api, httpx_mock):
     await api.login()
     assert api._token == "jwt-abc-123"
     assert api._client.headers["Authorization"] == "jwt-abc-123"
+
+
+@pytest.mark.asyncio
+async def test_reauthenticates_on_401(api, httpx_mock):
+    """An expired token (401) triggers a re-login and one transparent retry."""
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/robotQuery",
+        status_code=401,
+    )
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/login",
+        json={"data": {"token": "fresh-token"}},
+    )
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/robotQuery",
+        json={"success": True, "data": []},
+    )
+
+    result = await api.robot_query("1")
+
+    assert result["success"] is True
+    assert api._token == "fresh-token"
+    # failed query, login, retried query
+    assert len(httpx_mock.get_requests()) == 3
+
+
+@pytest.mark.asyncio
+async def test_raises_when_401_persists_after_relogin(api, httpx_mock):
+    """If the API still returns 401 after re-login, the error propagates (no loop)."""
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/robotQuery",
+        status_code=401,
+    )
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/login",
+        json={"data": {"token": "fresh-token"}},
+    )
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/robotQuery",
+        status_code=401,
+    )
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await api.robot_query("1")
 
 
 # -- Read endpoints --------------------------------------------------------
