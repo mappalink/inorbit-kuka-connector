@@ -68,6 +68,38 @@ async def test_reauthenticates_on_401(api, httpx_mock):
 
 
 @pytest.mark.asyncio
+async def test_relogin_clears_stale_authorization_header(api, httpx_mock):
+    """Re-login must not carry the expired token in the Authorization header.
+
+    KUKA's Interface Manager rejects (401) any request carrying an invalid
+    token, the /login endpoint included. Before this fix, the first login
+    set the Authorization header on the shared httpx client, and the re-auth
+    POST to /login then carried the now-expired token — locking the connector
+    into a permanent 401 loop after the ~7-day JWT TTL.
+    """
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/login",
+        json={"data": {"token": "stale-token"}},
+    )
+    await api.login()
+    assert api._client.headers["Authorization"] == "stale-token"
+
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/login",
+        json={"data": {"token": "fresh-token"}},
+    )
+    await api.login()
+
+    login_requests = [
+        r for r in httpx_mock.get_requests()
+        if r.url.path == "/interfaces/api/login"
+    ]
+    assert len(login_requests) == 2
+    assert "Authorization" not in login_requests[1].headers
+    assert api._client.headers["Authorization"] == "fresh-token"
+
+
+@pytest.mark.asyncio
 async def test_raises_when_401_persists_after_relogin(api, httpx_mock):
     """If the API still returns 401 after re-login, the error propagates (no loop)."""
     httpx_mock.add_response(

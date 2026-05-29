@@ -34,6 +34,11 @@ class KukaFleetApi:
         Uses plain text password (not MD5). The Interface Manager is a
         separate service from the Fleet Manager UI, with its own credentials.
         """
+        # Clear any cached Authorization header — KUKA's Interface Manager
+        # rejects (401) any request that carries an invalid/expired token,
+        # the /login endpoint included. Without this, re-auth after the
+        # ~7-day JWT TTL would loop forever on 401.
+        self._client.headers.pop("Authorization", None)
         resp = await self._client.post(
             f"{self._base_url}/interfaces/api/login",
             json={"username": self._username, "password": self._password},
