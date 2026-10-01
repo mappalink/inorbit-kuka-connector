@@ -69,6 +69,13 @@ fail_under = 0
 [tool.ruff]
 line-length = 100
 
+[tool.ruff.lint]
+# Pin the pre-0.16 default rule set — ruff 0.16 widened its defaults, which
+# would retroactively flag long-standing code (34 findings here, blind
+# `except Exception`, none of them regressions). Widen deliberately, not by
+# version drift. Same pin as the MiR and Omron connectors.
+select = ["E4", "E7", "E9", "F"]
+
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
 
