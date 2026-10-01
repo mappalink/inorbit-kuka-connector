@@ -237,8 +237,40 @@ class TestWaitForKukaCompletionNode:
         node = WaitForKukaCompletionNode(ctx, timeout_secs=3.5, label="test")
         ctx.shared_memory.freeze()
 
-        with pytest.raises(RuntimeError, match="blocked by an obstacle"):
+        with pytest.raises(RuntimeError, match="stopped by an obstacle"):
             await node._execute()
+
+    @pytest.mark.asyncio
+    async def test_waits_out_a_safety_stop(self):
+        """FM lab, 2026-10-01: a person stepped close to kuka-kmp600-2 while it drove. The
+        fleet reported the obstacle for one second, then the safety controller's stop
+        (motors off). Both ended by themselves; the mission must survive them."""
+        obstacle = {"success": True, "data": [{"status": 7, "errorMessage": " noError-obstacle"}]}
+        safety = {
+            "success": True,
+            "data": [
+                {
+                    "status": 7,
+                    "errorMessage": "0x0207 middleError-safetyPlcControllerError,"
+                    "leftMotorSto,rightMotorSto",
+                }
+            ],
+        }
+        ctx = _make_context(
+            robot_query_responses=[
+                {"success": True, "data": [{"status": 4}]},
+                obstacle,
+                safety,
+                safety,
+                {"success": True, "data": [{"status": 4}]},
+                {"success": True, "data": [{"status": 3}]},
+            ]
+        )
+        node = WaitForKukaCompletionNode(ctx, label="test")
+        ctx.shared_memory.freeze()
+        await node._execute()
+
+        assert ctx.kuka_api.robot_query.await_count == 6
 
     @pytest.mark.asyncio
     async def test_timeout(self):

@@ -122,23 +122,33 @@ def _find_nearest_node(
 # ---------------------------------------------------------------------------
 
 
-def _blocked_by_obstacle(robot: dict) -> bool:
-    """Whether an Abnormal status is only the robot waiting for its path to clear.
+def _self_clearing_stop(robot: dict) -> str | None:
+    """What stopped the robot, when the Abnormal status clears by itself; else None.
 
-    The fleet reports a robot that has stopped for something in its way as
-    Abnormal with errorMessage "noError-obstacle". It is not a fault: the robot
-    continues by itself once the path is free.
+    The fleet reports two stops as Abnormal that are not faults and end without
+    anyone resetting the robot:
+
+    * "noError-obstacle": something is in the robot's way, it waits for a free path.
+    * "0x0207 middleError-safetyPlcControllerError,leftMotorSto,rightMotorSto": the
+      safety controller has cut the motors because something is inside the
+      protective field, typically a person stepping close. It releases when the
+      field is clear.
     """
     message = str(robot.get("errorMessage") or "").strip().lower()
-    return message.startswith("noerror") and "obstacle" in message
+    if message.startswith("noerror") and "obstacle" in message:
+        return "an obstacle"
+    if "safetyplccontrollererror" in message and "motorsto" in message:
+        return "its safety stop"
+    return None
 
 
 class WaitForKukaCompletionNode(BehaviorTree):
     """Polls robotQuery until the robot leaves Executing state.
 
     Succeeds when status is Idle or Charging.
-    Fails on Abnormal or timeout, except that an obstacle stop is waited out:
-    the robot resumes by itself, and the step's timeout still bounds the wait.
+    Fails on Abnormal or timeout, except that an obstacle stop and a safety stop
+    are waited out: the robot resumes by itself, and the step's timeout still
+    bounds the wait.
     """
 
     def __init__(
@@ -159,13 +169,13 @@ class WaitForKukaCompletionNode(BehaviorTree):
         logger.info("Waiting for KUKA robot %s to complete task", self._kuka_robot_id)
         elapsed = 0.0
         seen_executing = False
-        blocked = False
+        blocked: str | None = None
 
         while True:
             if self._timeout_secs and elapsed >= self._timeout_secs:
                 error_msg = (
                     f"KUKA robot {self._kuka_robot_id} timed out after {self._timeout_secs}s"
-                    + (" while blocked by an obstacle" if blocked else "")
+                    + (f" while stopped by {blocked}" if blocked else "")
                 )
                 logger.error(error_msg)
                 self._shared_memory.set(SharedMemoryKeys.KUKA_ERROR_MESSAGE, error_msg)
@@ -208,13 +218,15 @@ class WaitForKukaCompletionNode(BehaviorTree):
                             self._kuka_robot_id,
                         )
 
-                    if status == _STATUS_ABNORMAL and _blocked_by_obstacle(robot):
-                        if not blocked:
+                    stop = _self_clearing_stop(robot) if status == _STATUS_ABNORMAL else None
+                    if stop:
+                        if stop != blocked:
                             logger.warning(
-                                "KUKA robot %s is blocked by an obstacle, waiting for it to clear",
+                                "KUKA robot %s is stopped by %s, waiting for it to clear",
                                 self._kuka_robot_id,
+                                stop,
                             )
-                            blocked = True
+                            blocked = stop
                     elif status == _STATUS_ABNORMAL:
                         error_msg = (
                             f"KUKA robot {self._kuka_robot_id} entered Abnormal state: "
@@ -224,8 +236,8 @@ class WaitForKukaCompletionNode(BehaviorTree):
                         self._shared_memory.set(SharedMemoryKeys.KUKA_ERROR_MESSAGE, error_msg)
                         raise RuntimeError(error_msg)
                     elif blocked:
-                        logger.info("KUKA robot %s: obstacle cleared", self._kuka_robot_id)
-                        blocked = False
+                        logger.info("KUKA robot %s: %s cleared", self._kuka_robot_id, blocked)
+                        blocked = None
 
                     if seen_executing:
                         logger.debug(
