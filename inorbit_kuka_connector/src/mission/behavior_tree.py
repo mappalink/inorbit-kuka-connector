@@ -139,8 +139,16 @@ def _self_clearing_stop(robot: dict) -> str | None:
       safety controller has cut the motors because something is inside the
       protective field, typically a person stepping close. It releases when the
       field is clear.
+
+    Around both, the fleet reports Abnormal with no message at all for a moment.
+    That is waited out as well. While the robot is stopped the mission's own job
+    is watched: if the fleet ends it, the wait fails.
     """
     message = str(robot.get("errorMessage") or "").strip().lower()
+    if not message:
+        # The fleet reports Abnormal without a message for a second or two when
+        # such a stop begins and again when it ends.
+        return "a stop without a reported cause"
     if message.startswith("noerror") and "obstacle" in message:
         return "an obstacle"
     if "safetyplccontrollererror" in message and "motorsto" in message:
@@ -264,6 +272,14 @@ class WaitForKukaCompletionNode(BehaviorTree):
                             )
 
                     stop = _self_clearing_stop(robot) if status == _STATUS_ABNORMAL else None
+                    if stop and (job_status := await self._job_status()) in _JOB_FAILED:
+                        error_msg = (
+                            f"KUKA job for robot {self._kuka_robot_id} ended "
+                            f"{_JOB_FAILED[job_status]} while the robot was stopped by {stop}"
+                        )
+                        logger.error(error_msg)
+                        self._shared_memory.set(SharedMemoryKeys.KUKA_ERROR_MESSAGE, error_msg)
+                        raise RuntimeError(error_msg)
                     if stop:
                         if stop != blocked:
                             logger.warning(

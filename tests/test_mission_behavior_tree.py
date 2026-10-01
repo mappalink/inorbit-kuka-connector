@@ -199,12 +199,42 @@ class TestWaitForKukaCompletionNode:
             await node._execute()
 
     @pytest.mark.asyncio
-    async def test_raises_on_abnormal_without_a_message(self):
-        ctx = _make_context(robot_query_responses=[{"success": True, "data": [{"status": 7}]}])
+    async def test_waits_out_an_abnormal_without_a_message(self):
+        """FM lab, 2026-10-01: when the robot was blocked the fleet first reported Abnormal
+        with no message, then the safety stop, then no message again, then idle."""
+        safety = "0x0207 middleError-safetyPlcControllerError,leftMotorSto,rightMotorSto"
+        ctx = _make_context(
+            robot_query_responses=[
+                {"success": True, "data": [{"status": 4}]},
+                {"success": True, "data": [{"status": 7, "errorMessage": ""}]},
+                {"success": True, "data": [{"status": 7, "errorMessage": safety}]},
+                {"success": True, "data": [{"status": 7, "errorMessage": None}]},
+                {"success": True, "data": [{"status": 4}]},
+                {"success": True, "data": [{"status": 3}]},
+            ]
+        )
         node = WaitForKukaCompletionNode(ctx, label="test")
         ctx.shared_memory.freeze()
+        await node._execute()
 
-        with pytest.raises(RuntimeError, match="Abnormal"):
+        assert ctx.kuka_api.robot_query.await_count == 6
+
+    @pytest.mark.asyncio
+    async def test_a_job_ended_during_a_stop_fails_the_wait(self):
+        ctx = _make_context(
+            robot_query_responses=[
+                {"success": True, "data": [{"status": 4}]},
+                {"success": True, "data": [{"status": 7, "errorMessage": " noError-obstacle"}]},
+            ]
+        )
+        ctx.kuka_api.job_query = AsyncMock(
+            return_value={"success": True, "data": [{"jobCode": "CONN-z", "status": 31}]}
+        )
+        node = WaitForKukaCompletionNode(ctx, label="test")
+        ctx.shared_memory.freeze()
+        ctx.shared_memory.set(SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE, "CONN-z")
+
+        with pytest.raises(RuntimeError, match="cancelled while the robot was stopped"):
             await node._execute()
 
     @pytest.mark.asyncio
