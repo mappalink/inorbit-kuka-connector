@@ -45,6 +45,12 @@ _STATUS_EXECUTING = 4
 _STATUS_CHARGING = 5
 _STATUS_ABNORMAL = 7
 
+# KUKA job status (jobQuery). A submitted mission appears there under its own
+# mission code as jobCode.
+_JOB_RUNNING = {10, 20, 25, 28, 50}  # created, executing, waiting, cancelling, warning
+_JOB_DONE = {30, 35}  # complete, manual complete
+_JOB_FAILED = {31: "cancelled", 60: "startup error"}
+
 # KUKA job status codes (from jobQuery)
 _JOB_COMPLETE = 30
 _JOB_CANCELLED = 31
@@ -149,6 +155,11 @@ class WaitForKukaCompletionNode(BehaviorTree):
     Fails on Abnormal or timeout, except that an obstacle stop and a safety stop
     are waited out: the robot resumes by itself, and the step's timeout still
     bounds the wait.
+
+    A robot that is Idle is not proof of arrival: between the legs of a
+    multi-node move the fleet reports it Idle for a moment. When the wait
+    belongs to a submitted mission, the mission's own job must have finished
+    too.
     """
 
     def __init__(
@@ -164,6 +175,22 @@ class WaitForKukaCompletionNode(BehaviorTree):
         self._timeout_secs = timeout_secs
 
         self._shared_memory.add(SharedMemoryKeys.KUKA_ERROR_MESSAGE, None)
+
+    async def _job_status(self) -> int | None:
+        """Status of the job this wait belongs to, or None when it cannot be told
+        (no mission code, the job is not listed, or the query fails)."""
+        try:
+            code = self._shared_memory.get(SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE)
+            if not code:
+                return None
+            data = await self._kuka_api.job_query({"robotId": self._kuka_robot_id, "limit": 10})
+            for job in data.get("data") or []:
+                if job.get("jobCode") == code:
+                    status = job.get("status")
+                    return status if isinstance(status, int) else None
+        except Exception as e:  # noqa: BLE001 - a failed lookup must not end the wait
+            logger.warning("jobQuery lookup failed: %s", e)
+        return None
 
     async def _execute(self):
         logger.info("Waiting for KUKA robot %s to complete task", self._kuka_robot_id)
@@ -196,7 +223,24 @@ class WaitForKukaCompletionNode(BehaviorTree):
                             seen_executing = True
 
                     if status in (_STATUS_IDLE, _STATUS_CHARGING):
-                        if seen_executing:
+                        job_status = await self._job_status()
+                        if job_status in _JOB_FAILED:
+                            error_msg = (
+                                f"KUKA job for robot {self._kuka_robot_id} ended "
+                                f"{_JOB_FAILED[job_status]} before the robot arrived"
+                            )
+                            logger.error(error_msg)
+                            self._shared_memory.set(SharedMemoryKeys.KUKA_ERROR_MESSAGE, error_msg)
+                            raise RuntimeError(error_msg)
+                        if job_status in _JOB_RUNNING:
+                            # Not started yet, or idle between two legs of the same
+                            # job: either way the robot is not there yet.
+                            logger.debug(
+                                "KUKA robot %s idle but its job is still running (status=%s)",
+                                self._kuka_robot_id,
+                                job_status,
+                            )
+                        elif seen_executing or job_status in _JOB_DONE:
                             logger.info(
                                 "KUKA robot %s completed (status=%s)",
                                 self._kuka_robot_id,
@@ -212,11 +256,12 @@ class WaitForKukaCompletionNode(BehaviorTree):
                             except Exception:
                                 pass
                             return
-                        # Robot still Idle after submission — hasn't started yet
-                        logger.debug(
-                            "KUKA robot %s still idle, waiting for execution to start...",
-                            self._kuka_robot_id,
-                        )
+                        else:
+                            # Robot still Idle after submission — hasn't started yet
+                            logger.debug(
+                                "KUKA robot %s still idle, waiting for execution to start...",
+                                self._kuka_robot_id,
+                            )
 
                     stop = _self_clearing_stop(robot) if status == _STATUS_ABNORMAL else None
                     if stop:

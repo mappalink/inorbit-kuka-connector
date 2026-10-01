@@ -273,6 +273,80 @@ class TestWaitForKukaCompletionNode:
         assert ctx.kuka_api.robot_query.await_count == 6
 
     @pytest.mark.asyncio
+    async def test_idle_between_legs_is_not_arrival(self):
+        """FM lab, 2026-10-01: kuka-kmp600-2 on a four-node move was reported complete at
+        its first node, 54 s before it arrived; the fleet reports Idle between the legs."""
+        ctx = _make_context(
+            robot_query_responses=[
+                {"success": True, "data": [{"status": 4}]},  # first leg
+                {"success": True, "data": [{"status": 3}]},  # idle on the first node
+                {"success": True, "data": [{"status": 4}]},  # next leg
+                {"success": True, "data": [{"status": 3}]},  # arrived
+            ]
+        )
+        ctx.kuka_api.job_query = AsyncMock(
+            side_effect=[
+                {"success": True, "data": [{"jobCode": "CONN-leg", "status": 20}]},
+                {"success": True, "data": [{"jobCode": "CONN-leg", "status": 30}]},
+            ]
+        )
+        node = WaitForKukaCompletionNode(ctx, label="test")
+        ctx.shared_memory.freeze()
+        ctx.shared_memory.set(SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE, "CONN-leg")
+        await node._execute()
+
+        assert ctx.kuka_api.robot_query.await_count == 4
+        assert ctx.shared_memory.get(SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE) is None
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_job_is_not_arrival(self):
+        ctx = _make_context(
+            robot_query_responses=[
+                {"success": True, "data": [{"status": 4}]},
+                {"success": True, "data": [{"status": 3}]},
+            ]
+        )
+        ctx.kuka_api.job_query = AsyncMock(
+            return_value={"success": True, "data": [{"jobCode": "CONN-x", "status": 31}]}
+        )
+        node = WaitForKukaCompletionNode(ctx, label="test")
+        ctx.shared_memory.freeze()
+        ctx.shared_memory.set(SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE, "CONN-x")
+
+        with pytest.raises(RuntimeError, match="cancelled before the robot arrived"):
+            await node._execute()
+
+    @pytest.mark.asyncio
+    async def test_a_move_to_the_node_it_stands_on_completes(self):
+        """The fleet finishes such a job without the robot ever reporting Executing."""
+        ctx = _make_context(robot_query_responses=[{"success": True, "data": [{"status": 3}]}])
+        ctx.kuka_api.job_query = AsyncMock(
+            return_value={"success": True, "data": [{"jobCode": "CONN-here", "status": 30}]}
+        )
+        node = WaitForKukaCompletionNode(ctx, label="test")
+        ctx.shared_memory.freeze()
+        ctx.shared_memory.set(SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE, "CONN-here")
+        await node._execute()
+
+        assert ctx.kuka_api.robot_query.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_unknown_job_falls_back_to_the_robot_status(self):
+        ctx = _make_context(
+            robot_query_responses=[
+                {"success": True, "data": [{"status": 4}]},
+                {"success": True, "data": [{"status": 3}]},
+            ]
+        )
+        ctx.kuka_api.job_query = AsyncMock(side_effect=ConnectionError("fleet unreachable"))
+        node = WaitForKukaCompletionNode(ctx, label="test")
+        ctx.shared_memory.freeze()
+        ctx.shared_memory.set(SharedMemoryKeys.KUKA_ACTIVE_MISSION_CODE, "CONN-y")
+        await node._execute()
+
+        assert ctx.kuka_api.robot_query.await_count == 2
+
+    @pytest.mark.asyncio
     async def test_timeout(self):
         ctx = _make_context(
             robot_query_responses=[
