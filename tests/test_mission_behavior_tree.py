@@ -188,7 +188,7 @@ class TestWaitForKukaCompletionNode:
             robot_query_responses=[
                 {
                     "success": True,
-                    "data": [{"status": 7, "errorMessage": "obstacle"}],
+                    "data": [{"status": 7, "errorMessage": "E1042-drive fault"}],
                 },
             ]
         )
@@ -196,6 +196,48 @@ class TestWaitForKukaCompletionNode:
         ctx.shared_memory.freeze()
 
         with pytest.raises(RuntimeError, match="Abnormal"):
+            await node._execute()
+
+    @pytest.mark.asyncio
+    async def test_raises_on_abnormal_without_a_message(self):
+        ctx = _make_context(robot_query_responses=[{"success": True, "data": [{"status": 7}]}])
+        node = WaitForKukaCompletionNode(ctx, label="test")
+        ctx.shared_memory.freeze()
+
+        with pytest.raises(RuntimeError, match="Abnormal"):
+            await node._execute()
+
+    @pytest.mark.asyncio
+    async def test_waits_out_an_obstacle_stop(self):
+        """FM lab, 2026-10-01: kuka-kmp600-2 stopped for an obstacle 3 m before its node.
+        The fleet reports that as Abnormal / " noError-obstacle"; the mission was aborted
+        although the robot would have continued by itself."""
+        obstacle = {"success": True, "data": [{"status": 7, "errorMessage": " noError-obstacle"}]}
+        ctx = _make_context(
+            robot_query_responses=[
+                {"success": True, "data": [{"status": 4}]},  # executing
+                obstacle,
+                obstacle,
+                {"success": True, "data": [{"status": 4}]},  # path clear, driving again
+                {"success": True, "data": [{"status": 3}]},  # arrived
+            ]
+        )
+        node = WaitForKukaCompletionNode(ctx, label="test")
+        ctx.shared_memory.freeze()
+        await node._execute()
+
+        assert ctx.kuka_api.robot_query.await_count == 5
+
+    @pytest.mark.asyncio
+    async def test_obstacle_wait_is_bounded_by_the_timeout(self):
+        obstacle = {"success": True, "data": [{"status": 7, "errorMessage": " noError-obstacle"}]}
+        ctx = _make_context(
+            robot_query_responses=[{"success": True, "data": [{"status": 4}]}] + [obstacle] * 5
+        )
+        node = WaitForKukaCompletionNode(ctx, timeout_secs=3.5, label="test")
+        ctx.shared_memory.freeze()
+
+        with pytest.raises(RuntimeError, match="blocked by an obstacle"):
             await node._execute()
 
     @pytest.mark.asyncio
