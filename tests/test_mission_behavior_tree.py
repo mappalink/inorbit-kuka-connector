@@ -220,6 +220,45 @@ class TestWaitForKukaCompletionNode:
         assert ctx.kuka_api.robot_query.await_count == 6
 
     @pytest.mark.asyncio
+    async def test_waits_out_any_middle_error(self):
+        """FM lab, 2026-10-01: a third stop, "0x850a middleError-baseControlAbnormal", also
+        cleared by itself 17 s later. Levels noError and middleError are waited out."""
+        ctx = _make_context(
+            robot_query_responses=[
+                {"success": True, "data": [{"status": 4}]},
+                {
+                    "success": True,
+                    "data": [
+                        {"status": 7, "errorMessage": "0x850a middleError-baseControlAbnormal"}
+                    ],
+                },
+                {"success": True, "data": [{"status": 4}]},
+                {"success": True, "data": [{"status": 3}]},
+            ]
+        )
+        node = WaitForKukaCompletionNode(ctx, label="test")
+        ctx.shared_memory.freeze()
+        await node._execute()
+
+        assert ctx.kuka_api.robot_query.await_count == 4
+
+    @pytest.mark.asyncio
+    async def test_raises_on_a_level_that_is_not_self_clearing(self):
+        ctx = _make_context(
+            robot_query_responses=[
+                {
+                    "success": True,
+                    "data": [{"status": 7, "errorMessage": "0x9001 seriousError-driveFault"}],
+                },
+            ]
+        )
+        node = WaitForKukaCompletionNode(ctx, label="test")
+        ctx.shared_memory.freeze()
+
+        with pytest.raises(RuntimeError, match="Abnormal"):
+            await node._execute()
+
+    @pytest.mark.asyncio
     async def test_a_job_ended_during_a_stop_fails_the_wait(self):
         ctx = _make_context(
             robot_query_responses=[

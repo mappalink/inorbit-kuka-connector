@@ -128,32 +128,33 @@ def _find_nearest_node(
 # ---------------------------------------------------------------------------
 
 
+# Error levels of the fleet's errorMessage ("<code> <level>-<cause>[,detail...]")
+# under which the robot recovers by itself.
+_SELF_CLEARING_LEVELS = {"noerror", "middleerror"}
+_STOP_NAMES = {"obstacle": "an obstacle", "safetyplccontrollererror": "its safety stop"}
+
+
 def _self_clearing_stop(robot: dict) -> str | None:
     """What stopped the robot, when the Abnormal status clears by itself; else None.
 
-    The fleet reports two stops as Abnormal that are not faults and end without
-    anyone resetting the robot:
-
-    * "noError-obstacle": something is in the robot's way, it waits for a free path.
-    * "0x0207 middleError-safetyPlcControllerError,leftMotorSto,rightMotorSto": the
-      safety controller has cut the motors because something is inside the
-      protective field, typically a person stepping close. It releases when the
-      field is clear.
-
-    Around both, the fleet reports Abnormal with no message at all for a moment.
-    That is waited out as well. While the robot is stopped the mission's own job
-    is watched: if the fleet ends it, the wait fails.
+    The fleet's errorMessage reads "<code> <level>-<cause>[,detail...]", for
+    example " noError-obstacle", "0x0207 middleError-safetyPlcControllerError,
+    leftMotorSto,rightMotorSto" (a person inside the protective field) or
+    "0x850a middleError-baseControlAbnormal". Stops at the levels noError and
+    middleError end without anyone resetting the robot, and so does the Abnormal
+    status the fleet reports with no message at all for a moment when such a
+    stop begins and ends. All of them are waited out; the mission's own job is
+    watched meanwhile, and the step's timeout bounds the wait. Any other level
+    is a fault.
     """
-    message = str(robot.get("errorMessage") or "").strip().lower()
+    message = str(robot.get("errorMessage") or "").strip()
     if not message:
-        # The fleet reports Abnormal without a message for a second or two when
-        # such a stop begins and again when it ends.
         return "a stop without a reported cause"
-    if message.startswith("noerror") and "obstacle" in message:
-        return "an obstacle"
-    if "safetyplccontrollererror" in message and "motorsto" in message:
-        return "its safety stop"
-    return None
+    level, _, cause = message.split()[-1].partition("-")
+    if level.lower() not in _SELF_CLEARING_LEVELS:
+        return None
+    cause = cause.split(",")[0]
+    return _STOP_NAMES.get(cause.lower(), f"{level}-{cause}")
 
 
 class WaitForKukaCompletionNode(BehaviorTree):
