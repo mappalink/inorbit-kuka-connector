@@ -109,6 +109,32 @@ class KukaBehaviorTreeBuilderContext(BehaviorTreeBuilderContext):
         return self._node_margin_m
 
 
+def resolve_mission_arguments(arguments: dict | None, mission) -> dict:
+    """Replace `{_arguments: key}` operators with the mission's dispatch arguments.
+
+    The upstream executor resolves these at step execution (RunActionNode ->
+    MissionDataResolver); this connector compiles steps natively at tree-build
+    time, so it has to resolve them itself. Only `_arguments` is supported
+    here: `_data` depends on mission state that does not exist yet at build.
+    """
+    values = getattr(mission, "arguments", None) or {}
+
+    def walk(obj):
+        if isinstance(obj, dict):
+            if len(obj) == 1:
+                key = next(iter(obj))
+                if key == "_arguments":
+                    if obj[key] not in values:
+                        raise RuntimeError(f"mission argument '{obj[key]}' was not supplied")
+                    return values[obj[key]]
+                if isinstance(key, str) and key.startswith("_"):
+                    raise RuntimeError(f"operator {key} is not supported at tree-build time")
+            return {k: walk(v) for k, v in obj.items()}
+        return obj
+
+    return walk(arguments or {})
+
+
 def _find_nearest_node(
     nodes: list[tuple[str, float, float]], x: float, y: float
 ) -> tuple[str | None, float]:
@@ -634,7 +660,7 @@ class KukaNodeFromStepBuilder(NodeFromStepBuilder):
     def visit_run_action(self, step: MissionStepRunAction) -> BehaviorTree:
         """Map known KUKA actions to local API calls."""
         action_id = step.action_id
-        arguments = step.arguments or {}
+        arguments = resolve_mission_arguments(step.arguments, self._kuka_context.mission)
 
         # NavigateTo actions also come through as runAction with a pose
         if action_id == ACTION_NAVIGATE_TO:

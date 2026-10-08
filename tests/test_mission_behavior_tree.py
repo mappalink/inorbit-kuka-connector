@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from inorbit_edge_executor.datatypes import (
+    MissionDefinition,
     MissionRuntimeOptions,
     MissionRuntimeSharedMemory,
     MissionStepPoseWaypoint,
@@ -29,6 +30,7 @@ from inorbit_kuka_connector.src.mission.behavior_tree import (
     WaitForKukaCompletionNode,
     _find_nearest_node,
 )
+from inorbit_kuka_connector.src.mission.tree_builder import KukaTreeBuilder
 
 
 # ---------------------------------------------------------------------------
@@ -721,3 +723,87 @@ class TestKukaNodeFromStepBuilder:
         step = MissionStepWait(timeoutSecs=5.0)
         tree = step.accept(builder)
         assert tree is not None
+
+
+# ---------------------------------------------------------------------------
+# Dispatch-time arguments ({_arguments: key}) resolved before native compile
+# ---------------------------------------------------------------------------
+
+
+class TestMissionArguments:
+    def test_move_to_node_takes_the_node_from_the_mission_arguments(self):
+        ctx = _make_context()
+        ctx.mission.arguments = {"node_code": "NODE-002"}
+        builder = KukaNodeFromStepBuilder(ctx)
+
+        step = MissionStepRunAction(
+            runAction={
+                "actionId": "kuka-move-to-node",
+                "arguments": {"node_code": {"_arguments": "node_code"}},
+            },
+        )
+        tree = step.accept(builder)
+        assert "NODE-002" in tree.label
+
+    def test_navigate_to_takes_the_pose_from_the_mission_arguments(self):
+        ctx = _make_context(nodes=SAMPLE_NODES, node_margin_m=0.1)
+        ctx.mission.arguments = {"pose": {"x": 5.0, "y": 5.0, "theta": 0.0}}
+        builder = KukaNodeFromStepBuilder(ctx)
+
+        step = MissionStepRunAction(
+            runAction={
+                "actionId": "NavigateTo-000000",
+                "arguments": {"pose": {"_arguments": "pose"}},
+            },
+        )
+        tree = step.accept(builder)
+        assert "NODE-002" in tree.label
+
+    def test_a_missing_mission_argument_names_the_key(self):
+        ctx = _make_context()
+        ctx.mission.arguments = {}
+        builder = KukaNodeFromStepBuilder(ctx)
+
+        step = MissionStepRunAction(
+            runAction={
+                "actionId": "kuka-move-to-node",
+                "arguments": {"node_code": {"_arguments": "node_code"}},
+            },
+        )
+        with pytest.raises(RuntimeError, match="node_code"):
+            step.accept(builder)
+
+    def test_consecutive_argument_moves_are_merged_into_one_kuka_mission(self):
+        ctx = _make_context()
+        ctx.mission.arguments = {"first": "NODE-001", "second": "NODE-003"}
+        ctx.mission.definition = MissionDefinition(
+            label="TEST",
+            steps=[
+                {
+                    "runAction": {
+                        "actionId": "kuka-move-to-node",
+                        "arguments": {"node_code": {"_arguments": "first"}},
+                    }
+                },
+                {
+                    "runAction": {
+                        "actionId": "kuka-move-to-node",
+                        "arguments": {"node_code": {"_arguments": "second"}},
+                    }
+                },
+            ],
+        )
+        tree = KukaTreeBuilder().build_tree_for_mission(ctx)
+        labels = _all_labels(tree)
+        assert any("NODE-001 -> NODE-003" in lab for lab in labels), labels
+
+
+def _all_labels(node) -> list[str]:
+    out = [getattr(node, "label", "") or ""]
+    for attr in ("nodes", "behavior", "error_handler", "cancelled_handler", "pause_handler"):
+        child = getattr(node, attr, None)
+        if child is None:
+            continue
+        for c in child if isinstance(child, list) else [child]:
+            out += _all_labels(c)
+    return out

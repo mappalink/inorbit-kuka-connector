@@ -35,6 +35,7 @@ from .behavior_tree import (
     KukaNodeFromStepBuilder,
     WaitForKukaCompletionNode,
     _find_nearest_node,
+    resolve_mission_arguments,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ def _extract_node_code(step, context: KukaBehaviorTreeBuilderContext) -> str | N
     """
     if isinstance(step, MissionStepRunAction):
         action_id = step.action_id
-        arguments = step.arguments or {}
+        arguments = resolve_mission_arguments(step.arguments, context.mission)
         if action_id == "kuka-move-to-node":
             return arguments.get("node_code")
 
