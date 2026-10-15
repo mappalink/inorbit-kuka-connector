@@ -6,6 +6,7 @@
 
 from typing import Optional
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from inorbit_connector.models import InorbitConnectorConfig
 
@@ -25,6 +26,9 @@ class KukaConnectorConfig(BaseSettings):
     kuka_robot_id: str  # Robot ID in KUKA Fleet (e.g. "1", "2", "100")
     robot_model: str  # KUKA robot model string for submitMission (e.g. "KMP 600P-EU-DIC diffDrive")
     poll_frequency: float = 1.0  # Hz
+    # Seconds without a successful robotQuery after which the robot is reported
+    # offline to InOrbit. A Fleet Manager status of Offline reports it at once.
+    liveness_timeout: float = Field(60.0, gt=0)
 
     # Map image path on the KUKA fileserver (no auth required)
     map_image_path: Optional[str] = None

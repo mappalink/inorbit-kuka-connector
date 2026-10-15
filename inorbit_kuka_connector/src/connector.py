@@ -23,6 +23,14 @@ from .mission_exec import KukaMissionExecutor
 
 logger = logging.getLogger(__name__)
 
+# KUKA Fleet Manager robot status meaning the robot is not reachable.
+KUKA_STATUS_OFFLINE = 2
+
+# How often an offline robot is reported offline to InOrbit again. The edge SDK
+# publishes a retained "online" status on every MQTT (re)connect, which would
+# otherwise undo the offline report.
+OFFLINE_REASSERT_SECS = 30.0
+
 # KUKA robot status codes (from robotQuery)
 KUKA_STATUS = {
     1: "Departure",
@@ -67,6 +75,18 @@ class KukaAmrConnector(Connector):
         self._nodes = self._load_nodes(cfg.nodes_file) if cfg.nodes_file else []
         self._node_margin_m = cfg.node_margin_cm / 100.0
 
+        # Robot liveness, see _execution_loop / _report_online_status.
+        self._liveness_timeout = cfg.liveness_timeout
+        # Time of the last successful robotQuery (or of the first failed one,
+        # so a Fleet Manager that never answers times out too).
+        self._last_fleet_reply_at: float | None = None
+        # None until the Fleet Manager has answered once.
+        self._robot_online: bool | None = None
+        # Status last reported to InOrbit; None means the SDK's own "online"
+        # sent at session connect.
+        self._reported_online: bool | None = None
+        self._offline_reasserted_at: float | None = None
+
         self._current_kuka_mission_code: str | None = None
         self._mission_code_submit_time: float = 0.0
         self._mission_executor = KukaMissionExecutor(
@@ -102,16 +122,27 @@ class KukaAmrConnector(Connector):
 
     @override
     async def _execution_loop(self) -> None:
+        now = time.monotonic()
         try:
             data = await self._api.robot_query(self._kuka_robot_id)
         except Exception as e:
             logger.error("robotQuery failed: %s", e)
-            return
+            data = {}
 
         if not data.get("success") or not data.get("data"):
+            # No answer from the Fleet Manager: keep the last known state for
+            # liveness_timeout, then report the robot offline.
+            if self._last_fleet_reply_at is None:
+                self._last_fleet_reply_at = now
+            if now - self._last_fleet_reply_at > self._liveness_timeout:
+                self._robot_online = False
+            self._report_online_status()
             return
 
+        self._last_fleet_reply_at = now
         robot = data["data"][0]
+        self._robot_online = robot.get("status") != KUKA_STATUS_OFFLINE
+        self._report_online_status()
 
         # Clear our tracked mission code when robot goes Idle, but only if
         # enough time has passed since we submitted it (guard against clearing
@@ -161,6 +192,51 @@ class KukaAmrConnector(Connector):
             mission_code=robot.get("missionCode", ""),
             **self._extract_job_kv(job),
         )
+
+    # -- Online status -----------------------------------------------------
+
+    @override
+    def _is_robot_online(self) -> bool:
+        """Answer InOrbit's online-status query (get_state) from Fleet Manager data."""
+        return self._robot_online is not False
+
+    def _report_online_status(self) -> None:
+        """Push the robot's online/offline status to InOrbit when it changes.
+
+        The edge SDK publishes a retained "online" status whenever the session
+        connects, and InOrbit only consults ``_is_robot_online`` (via
+        ``get_state``) once it already believes the robot is offline. A robot
+        the Fleet Manager reports as Offline would therefore stay online in
+        InOrbit for ever, so the connector reports the change itself, the way
+        the SDK does on disconnect. The offline status is re-sent every
+        ``OFFLINE_REASSERT_SECS`` because the SDK reports "online" again on
+        every MQTT reconnect.
+        """
+        online = self._robot_online
+        if online is None:
+            return
+        now = time.monotonic()
+        reported = True if self._reported_online is None else self._reported_online
+        if online != reported:
+            due = True
+        elif not online:
+            last = now if self._offline_reasserted_at is None else self._offline_reasserted_at
+            due = now - last >= OFFLINE_REASSERT_SECS
+        else:
+            due = False
+        if not due:
+            return
+
+        try:
+            self._get_session()._send_robot_status(online=online)
+        except Exception as exc:
+            logger.warning("Could not report online=%s to InOrbit: %s", online, exc)
+            return
+
+        if online != reported:
+            logger.info("Reported %s to InOrbit", "online" if online else "offline")
+        self._reported_online = online
+        self._offline_reasserted_at = None if online else now
 
     # -- Command handler ---------------------------------------------------
 
