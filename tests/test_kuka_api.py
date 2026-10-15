@@ -90,10 +90,7 @@ async def test_relogin_clears_stale_authorization_header(api, httpx_mock):
     )
     await api.login()
 
-    login_requests = [
-        r for r in httpx_mock.get_requests()
-        if r.url.path == "/interfaces/api/login"
-    ]
+    login_requests = [r for r in httpx_mock.get_requests() if r.url.path == "/interfaces/api/login"]
     assert len(login_requests) == 2
     assert "Authorization" not in login_requests[1].headers
     assert api._client.headers["Authorization"] == "fresh-token"
@@ -407,3 +404,43 @@ async def test_fetch_map_image_404(api, httpx_mock):
     )
     result = await api.fetch_map_image("/SITE/missing.png")
     assert result is None
+
+
+# -- Timeouts --------------------------------------------------------------
+#
+# The Interface Manager builds and dispatches a mission before answering a
+# submit, which takes around ten seconds on the FM fleet; the one-second polls
+# keep the short default.
+
+
+@pytest.mark.asyncio
+async def test_submit_move_mission_waits_longer_than_polls(api, httpx_mock):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/submitMission",
+        json={"success": True},
+    )
+    await api.submit_move_mission("300", "HEAL-002-11", "KMP 600P")
+    req = httpx_mock.get_request(url=f"{BASE_URL}/interfaces/api/amr/submitMission")
+    assert req.extensions["timeout"]["read"] == 30.0
+
+
+@pytest.mark.asyncio
+async def test_submit_mission_body_waits_longer_than_polls(api, httpx_mock):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/submitMission",
+        json={"success": True},
+    )
+    await api.submit_mission({"missionCode": "X"})
+    req = httpx_mock.get_request(url=f"{BASE_URL}/interfaces/api/amr/submitMission")
+    assert req.extensions["timeout"]["read"] == 30.0
+
+
+@pytest.mark.asyncio
+async def test_robot_query_keeps_short_timeout(api, httpx_mock):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/robotQuery",
+        json={"success": True, "data": []},
+    )
+    await api.robot_query("300")
+    req = httpx_mock.get_request(url=f"{BASE_URL}/interfaces/api/amr/robotQuery")
+    assert req.extensions["timeout"]["read"] == 10.0

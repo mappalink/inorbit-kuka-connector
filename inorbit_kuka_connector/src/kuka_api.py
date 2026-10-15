@@ -12,6 +12,12 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+# The Interface Manager builds and dispatches a mission before it answers a
+# submit (about 10 s on the FM fleet, measured 2026-10-15), longer than the
+# client default that suits the 1 Hz polls. A submit that times out client-side
+# still runs on the fleet, but the connector then never learns its mission code.
+SUBMIT_TIMEOUT_SECS = 30.0
+
 
 class KukaFleetApi:
     """Client for the KUKA.AMR Fleet Interface Manager API.
@@ -71,9 +77,12 @@ class KukaFleetApi:
         resp.raise_for_status()
         return resp.json()
 
-    async def _post(self, endpoint: str, json: Any = None) -> dict:
-        """POST to /interfaces/api/amr/<endpoint>."""
-        return await self._send("POST", endpoint, json=json or {})
+    async def _post(self, endpoint: str, json: Any = None, timeout: float | None = None) -> dict:
+        """POST to /interfaces/api/amr/<endpoint>; ``timeout`` overrides the client default."""
+        kwargs: dict[str, Any] = {"json": json or {}}
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        return await self._send("POST", endpoint, **kwargs)
 
     async def _get(self, endpoint: str) -> dict:
         """GET to /interfaces/api/amr/<endpoint>."""
@@ -144,7 +153,7 @@ class KukaFleetApi:
                 for i, node_code in enumerate(node_codes)
             ],
         }
-        resp = await self._post("submitMission", body)
+        resp = await self._post("submitMission", body, timeout=SUBMIT_TIMEOUT_SECS)
         return resp, mission_code
 
     async def robot_lift(
@@ -220,7 +229,7 @@ class KukaFleetApi:
 
     async def submit_mission(self, body: dict) -> dict:
         """Dispatch a mission (MOVE, RACK_MOVE, etc.)."""
-        return await self._post("submitMission", body)
+        return await self._post("submitMission", body, timeout=SUBMIT_TIMEOUT_SECS)
 
     async def cancel_mission(self, mission_code: str, cancel_mode: str = "FORCE") -> dict:
         """Cancel a mission."""
