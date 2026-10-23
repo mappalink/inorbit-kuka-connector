@@ -19,7 +19,7 @@ from inorbit_edge_executor.inorbit import InOrbitAPI as MissionInOrbitAPI
 
 from .config.models import ConnectorConfig
 from .kuka_api import KukaFleetApi
-from .mission_exec import KukaMissionExecutor
+from .mission_exec import KukaMissionExecutor, MissionScriptName
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,21 @@ KUKA_STATUS_OFFLINE = 2
 # publishes a retained "online" status on every MQTT (re)connect, which would
 # otherwise undo the offline report.
 OFFLINE_REASSERT_SECS = 30.0
+
+# Custom commands that move the robot or its lift; refused while the Fleet
+# Manager reports the robot Offline.
+MOTION_SCRIPTS = frozenset(
+    {
+        "move_to_node",
+        "lift",
+        "container_lift",
+        "move_carry",
+        "drop",
+        "container_drop",
+        "charge",
+        MissionScriptName.EXECUTE_MISSION_ACTION.value,
+    }
+)
 
 # KUKA robot status codes (from robotQuery)
 KUKA_STATUS = {
@@ -77,6 +92,9 @@ class KukaAmrConnector(Connector):
 
         # Robot liveness, see _execution_loop / _report_online_status.
         self._liveness_timeout = cfg.liveness_timeout
+        self._fleet_offline_visible = cfg.fleet_offline_visible
+        # The Fleet Manager's last answer had status Offline.
+        self._fleet_offline = False
         # Time of the last successful robotQuery (or of the first failed one,
         # so a Fleet Manager that never answers times out too).
         self._last_fleet_reply_at: float | None = None
@@ -141,7 +159,8 @@ class KukaAmrConnector(Connector):
 
         self._last_fleet_reply_at = now
         robot = data["data"][0]
-        self._robot_online = robot.get("status") != KUKA_STATUS_OFFLINE
+        self._fleet_offline = robot.get("status") == KUKA_STATUS_OFFLINE
+        self._robot_online = not self._fleet_offline or self._fleet_offline_visible
         self._report_online_status()
 
         # Clear our tracked mission code when robot goes Idle, but only if
@@ -206,7 +225,7 @@ class KukaAmrConnector(Connector):
         The edge SDK publishes a retained "online" status whenever the session
         connects, and InOrbit only consults ``_is_robot_online`` (via
         ``get_state``) once it already believes the robot is offline. A robot
-        the Fleet Manager reports as Offline would therefore stay online in
+        the Fleet Manager stops answering for would therefore stay online in
         InOrbit for ever, so the connector reports the change itself, the way
         the SDK does on disconnect. The offline status is re-sent every
         ``OFFLINE_REASSERT_SECS`` because the SDK reports "online" again on
@@ -245,10 +264,14 @@ class KukaAmrConnector(Connector):
         result_fn = options["result_function"]
 
         if command_name == COMMAND_NAV_GOAL:
+            if self._refuse_while_fleet_offline(result_fn):
+                return
             await self._handle_nav_goal(args[0], result_fn)
 
         elif command_name == COMMAND_CUSTOM_COMMAND:
             script_name, script_args = parse_custom_command_args(args)
+            if script_name in MOTION_SCRIPTS and self._refuse_while_fleet_offline(result_fn):
+                return
 
             # Try edge-executor mission commands first
             handled = await self._mission_executor.handle_command(script_name, script_args, options)
@@ -264,6 +287,20 @@ class KukaAmrConnector(Connector):
         else:
             logger.warning("Unhandled command type: %s", command_name)
             result_fn(CommandResultCode.FAILURE)
+
+    def _refuse_while_fleet_offline(self, result_fn) -> bool:
+        """Fail a motion command while the Fleet Manager reports the robot Offline.
+
+        Such a robot stays online in InOrbit (fleet_offline_visible), so InOrbit
+        would otherwise send it missions the Fleet Manager may queue until the
+        robot comes back.
+        """
+        if not self._fleet_offline:
+            return False
+        msg = "Robot is Offline in the KUKA Fleet Manager"
+        logger.warning("Refused motion command: %s", msg)
+        result_fn(CommandResultCode.FAILURE, execution_status_details=msg)
+        return True
 
     async def _handle_custom_command(self, script_name, script_args: dict, result_fn):
         try:

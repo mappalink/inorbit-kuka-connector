@@ -29,6 +29,11 @@ class KukaConnectorConfig(BaseSettings):
     # Seconds without a successful robotQuery after which the robot is reported
     # offline to InOrbit. A Fleet Manager status of Offline reports it at once.
     liveness_timeout: float = Field(60.0, gt=0)
+    # A robot the Fleet Manager reports as Offline keeps being reported at its
+    # last pose, and InOrbit zones count that pose. True keeps such a robot
+    # online in InOrbit, so it stays on the map where it holds a zone, and
+    # refuses motion; false reports it offline (hidden from the map).
+    fleet_offline_visible: bool = True
 
     # Map image path on the KUKA fileserver (no auth required)
     map_image_path: Optional[str] = None

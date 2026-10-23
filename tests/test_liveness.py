@@ -2,9 +2,11 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Tests for robot liveness: a KUKA that the Fleet Manager reports as Offline
-(status 2), or that cannot be queried at all for a while, is reported offline
-to InOrbit instead of staying online with its last known values.
+"""Tests for robot liveness. A KUKA that cannot be queried at all for a while
+is reported offline to InOrbit. A KUKA that the Fleet Manager reports as Offline
+(status 2) stays online by default, at the pose the Fleet Manager keeps
+reporting, because InOrbit zones count that pose; it then refuses motion. With
+fleet_offline_visible false it is reported offline instead.
 
 The edge SDK publishes a retained "online" status when the session connects
 and InOrbit only asks ``_is_robot_online`` (get_state) once it already believes
@@ -18,6 +20,8 @@ import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+from inorbit_connector.connector import CommandResultCode
 
 from inorbit_kuka_connector.src.config.models import KukaConnectorConfig
 from inorbit_kuka_connector.src.connector import KukaAmrConnector
@@ -34,9 +38,11 @@ def _robot(status: int) -> dict:
     return {"status": status, "x": "1000", "y": "2000", "robotOrientation": "90", "mapCode": "M"}
 
 
-def _connector(status: int | Exception) -> KukaAmrConnector:
+def _connector(status: int | Exception, fleet_offline_visible: bool = False) -> KukaAmrConnector:
     """A connector stub, bypassing __init__, whose Fleet Manager answers ``status``."""
     conn = object.__new__(KukaAmrConnector)
+    conn._fleet_offline_visible = fleet_offline_visible
+    conn._fleet_offline = False
     conn._kuka_robot_id = "1"
     conn._current_kuka_mission_code = None
     conn._mission_code_submit_time = 0.0
@@ -150,6 +156,102 @@ def _cfg(**kw) -> KukaConnectorConfig:
         fleet_url="http://fm", username="u", password="p", kuka_robot_id="1", robot_model="KMP"
     )
     return KukaConnectorConfig(**base, **kw)
+
+
+# -- fleet_offline_visible (the default) ---------------------------------------
+
+
+def test_visible_fleet_offline_robot_stays_online(clock) -> None:
+    conn = _connector(2, fleet_offline_visible=True)
+    _tick(conn)
+    clock["t"] += 61.0
+    _tick(conn)
+    assert conn._is_robot_online() is True
+    assert _status_calls(conn) == []
+    conn.publish_pose.assert_called()
+    assert conn.publish_key_values.call_args.kwargs["robot_status_text"] == "Offline"
+
+
+def test_visible_fleet_offline_robot_after_reported_offline_comes_back_online(clock) -> None:
+    # A robot reported offline earlier (e.g. by a Fleet Manager outage) is
+    # reported online again once the Fleet Manager answers, even with Offline.
+    conn = _connector(ConnectionError("fleet manager down"), fleet_offline_visible=True)
+    _tick(conn)
+    clock["t"] += 61.0
+    _tick(conn)
+    _answer(conn, 2)
+    _tick(conn)
+    assert _status_calls(conn) == [False, True]
+
+
+def test_visible_robot_still_goes_offline_when_fleet_manager_is_silent(clock) -> None:
+    conn = _connector(2, fleet_offline_visible=True)
+    _tick(conn)
+    _answer(conn, ConnectionError("fleet manager down"))
+    clock["t"] += 61.0
+    _tick(conn)
+    assert conn._is_robot_online() is False
+    assert _status_calls(conn) == [False]
+
+
+def _command(conn, command_name, args):
+    from inorbit_kuka_connector.src import connector as mod
+
+    result_fn = MagicMock()
+    conn._mission_executor = MagicMock()
+    conn._mission_executor.handle_command = AsyncMock(return_value=False)
+    conn._handle_custom_command = AsyncMock()
+    conn._handle_nav_goal = AsyncMock()
+    asyncio.run(
+        conn._inorbit_command_handler(
+            getattr(mod, command_name), args, {"result_function": result_fn}
+        )
+    )
+    return result_fn
+
+
+def _custom(script_name: str) -> list:
+    return [script_name, []]
+
+
+@pytest.mark.parametrize(
+    "command_name,args",
+    [
+        ("COMMAND_NAV_GOAL", [{"x": "1", "y": "2", "theta": "0"}]),
+        ("COMMAND_CUSTOM_COMMAND", _custom("move_to_node")),
+        ("COMMAND_CUSTOM_COMMAND", _custom("charge")),
+        ("COMMAND_CUSTOM_COMMAND", _custom("lift")),
+        ("COMMAND_CUSTOM_COMMAND", _custom("executeMissionAction")),
+    ],
+)
+def test_fleet_offline_robot_refuses_motion(clock, command_name, args) -> None:
+    conn = _connector(2, fleet_offline_visible=True)
+    _tick(conn)
+    result_fn = _command(conn, command_name, args)
+    assert result_fn.call_args.args[0] == CommandResultCode.FAILURE
+    assert "Offline" in result_fn.call_args.kwargs["execution_status_details"]
+    conn._handle_nav_goal.assert_not_called()
+    conn._handle_custom_command.assert_not_called()
+    conn._mission_executor.handle_command.assert_not_called()
+
+
+@pytest.mark.parametrize("script", ["cancel_mission", "abort_missions", "cancelMissionAction"])
+def test_fleet_offline_robot_still_takes_cancel(clock, script) -> None:
+    conn = _connector(2, fleet_offline_visible=True)
+    _tick(conn)
+    _command(conn, "COMMAND_CUSTOM_COMMAND", _custom(script))
+    conn._mission_executor.handle_command.assert_called_once()
+
+
+def test_online_robot_takes_motion(clock) -> None:
+    conn = _connector(3, fleet_offline_visible=True)
+    _tick(conn)
+    _command(conn, "COMMAND_NAV_GOAL", [{"x": "1", "y": "2", "theta": "0"}])
+    conn._handle_nav_goal.assert_called_once()
+
+
+def test_fleet_offline_visible_defaults_to_true() -> None:
+    assert _cfg().fleet_offline_visible is True
 
 
 def test_liveness_timeout_defaults_to_a_minute() -> None:
