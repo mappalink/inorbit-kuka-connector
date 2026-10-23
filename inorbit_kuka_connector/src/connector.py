@@ -185,7 +185,9 @@ class KukaAmrConnector(Connector):
         yaw_rad = math.radians(float(robot.get("robotOrientation", 0)))
         frame_id = robot.get("mapCode", "")
 
-        self.publish_pose(x=x_m, y=y_m, yaw=yaw_rad, frame_id=frame_id)
+        # An Offline robot's pose would keep holding InOrbit zones.
+        if self._robot_online:
+            self.publish_pose(x=x_m, y=y_m, yaw=yaw_rad, frame_id=frame_id)
 
         # Enrich with active job details
         job = await self._poll_active_job()
@@ -291,9 +293,9 @@ class KukaAmrConnector(Connector):
     def _refuse_while_fleet_offline(self, result_fn) -> bool:
         """Fail a motion command while the Fleet Manager reports the robot Offline.
 
-        Such a robot stays online in InOrbit (fleet_offline_visible), so InOrbit
-        would otherwise send it missions the Fleet Manager may queue until the
-        robot comes back.
+        With fleet_offline_visible such a robot stays online in InOrbit, so
+        InOrbit would otherwise send it missions the Fleet Manager may queue
+        until the robot comes back.
         """
         if not self._fleet_offline:
             return False

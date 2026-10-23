@@ -4,9 +4,10 @@
 
 """Tests for robot liveness. A KUKA that cannot be queried at all for a while
 is reported offline to InOrbit. A KUKA that the Fleet Manager reports as Offline
-(status 2) stays online by default, at the pose the Fleet Manager keeps
-reporting, because InOrbit zones count that pose; it then refuses motion. With
-fleet_offline_visible false it is reported offline instead.
+(status 2) is reported offline too, and its pose is no longer published:
+InOrbit zones count a pose that keeps arriving, offline or not. With
+fleet_offline_visible true it stays online at the Fleet Manager's pose instead
+(visible on the map, holding zones) and refuses motion.
 
 The edge SDK publishes a retained "online" status when the session connects
 and InOrbit only asks ``_is_robot_online`` (get_state) once it already believes
@@ -142,6 +143,14 @@ def test_never_answered_fleet_manager_is_offline_after_timeout(clock) -> None:
     assert _status_calls(conn) == [False]
 
 
+def test_offline_robot_publishes_no_pose(clock) -> None:
+    # The Fleet Manager keeps reporting the last pose of an Offline robot; a
+    # pose that keeps arriving holds InOrbit zones, so it is not published.
+    conn = _connector(2)
+    _tick(conn)
+    conn.publish_pose.assert_not_called()
+
+
 def test_offline_robot_still_publishes_fleet_manager_values(clock) -> None:
     # The Fleet Manager's own view (status Offline, last pose, battery) is real
     # data and drives the Error mode in InOrbit; keep publishing it.
@@ -250,8 +259,8 @@ def test_online_robot_takes_motion(clock) -> None:
     conn._handle_nav_goal.assert_called_once()
 
 
-def test_fleet_offline_visible_defaults_to_true() -> None:
-    assert _cfg().fleet_offline_visible is True
+def test_fleet_offline_visible_defaults_to_false() -> None:
+    assert _cfg().fleet_offline_visible is False
 
 
 def test_liveness_timeout_defaults_to_a_minute() -> None:
