@@ -5,6 +5,7 @@
 """Async HTTP client for the KUKA.AMR Fleet Interface Manager API."""
 
 import logging
+import time
 import uuid
 from typing import Any
 
@@ -153,7 +154,7 @@ class KukaFleetApi:
                 for i, node_code in enumerate(node_codes)
             ],
         }
-        resp = await self._post("submitMission", body, timeout=SUBMIT_TIMEOUT_SECS)
+        resp = await self._submit(body)
         return resp, mission_code
 
     async def robot_lift(
@@ -229,7 +230,41 @@ class KukaFleetApi:
 
     async def submit_mission(self, body: dict) -> dict:
         """Dispatch a mission (MOVE, RACK_MOVE, etc.)."""
-        return await self._post("submitMission", body, timeout=SUBMIT_TIMEOUT_SECS)
+        return await self._submit(body)
+
+    async def _submit(self, body: dict) -> dict:
+        """POST submitMission and log how long the Interface Manager took to answer.
+
+        The answer only comes once the task is built and handed to the fleet
+        (11.6 s measured 2026-10-27), which is what the InOrbit GUI's own wait
+        runs against; the number belongs in this log, not only in KUKA's.
+        """
+        positions = ", ".join(str(m.get("position")) for m in body.get("missionData", []))
+        started = time.monotonic()
+        try:
+            resp = await self._post("submitMission", body, timeout=SUBMIT_TIMEOUT_SECS)
+        except Exception as e:
+            logger.error(
+                "submitMission %s (%s) failed after %.1f s: %s",
+                body.get("missionCode"),
+                positions,
+                time.monotonic() - started,
+                f"{type(e).__name__} {e}".strip(),
+            )
+            raise
+        elapsed = time.monotonic() - started
+        if resp.get("success"):
+            verdict = "success"
+        else:
+            verdict = f"rejected ({resp.get('message') or resp.get('msg') or resp})"
+        logger.info(
+            "submitMission %s (%s) answered in %.1f s: %s",
+            body.get("missionCode"),
+            positions,
+            elapsed,
+            verdict,
+        )
+        return resp
 
     async def cancel_mission(self, mission_code: str, cancel_mode: str = "FORCE") -> dict:
         """Cancel a mission."""

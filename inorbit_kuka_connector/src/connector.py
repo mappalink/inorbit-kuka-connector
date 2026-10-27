@@ -265,13 +265,18 @@ class KukaAmrConnector(Connector):
     async def _inorbit_command_handler(self, command_name, args, options):
         result_fn = options["result_function"]
 
+        # Logged on arrival so a GUI "Timeout waiting for response" can be placed
+        # against the connector's clock and the Fleet Manager's answer time.
         if command_name == COMMAND_NAV_GOAL:
+            pose = args[0]
+            logger.info("InOrbit command navGoal (%.3f, %.3f)", float(pose["x"]), float(pose["y"]))
             if self._refuse_while_fleet_offline(result_fn):
                 return
-            await self._handle_nav_goal(args[0], result_fn)
+            await self._handle_nav_goal(pose, result_fn)
 
         elif command_name == COMMAND_CUSTOM_COMMAND:
             script_name, script_args = parse_custom_command_args(args)
+            logger.info("InOrbit command %s %s", script_name, script_args)
             if script_name in MOTION_SCRIPTS and self._refuse_while_fleet_offline(result_fn):
                 return
 
@@ -284,6 +289,7 @@ class KukaAmrConnector(Connector):
 
         elif command_name == COMMAND_MESSAGE:
             msg = args[0]
+            logger.info("InOrbit command message %s", msg)
             await self._handle_message(msg, result_fn)
 
         else:

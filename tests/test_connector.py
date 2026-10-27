@@ -268,3 +268,45 @@ class TestReportResult:
             lambda code, **kw: results.append(code),
         )
         assert len(results) == 1
+
+
+class TestCommandReceiptIsLogged:
+    """Every InOrbit command is logged on arrival, so a GUI timeout can be
+    placed against the connector's own clock (2026-10-27: nothing was logged
+    between the click and the Fleet Manager's answer 11.6 s later)."""
+
+    @staticmethod
+    def _make_stub():
+        from unittest.mock import AsyncMock
+
+        obj = object.__new__(KukaAmrConnector)
+        obj._kuka_robot_id = "1"
+        obj._robot_model = "KMP 600P"
+        obj._fleet_offline = False
+        obj._nodes = [("HEAL-002-125", 12.85, 45.42)]
+        obj._node_margin_m = 0.05
+        obj._api = AsyncMock()
+        obj._api.submit_move_mission.return_value = ({"success": True}, "CONN-abc")
+        obj._mission_executor = AsyncMock()
+        obj._mission_executor.handle_command.return_value = False
+        return obj
+
+    @pytest.mark.asyncio
+    async def test_custom_command_logged_on_arrival(self, caplog):
+        c = self._make_stub()
+        options = {"result_function": lambda code, **kw: None}
+        with caplog.at_level("INFO", logger="inorbit_kuka_connector.src.connector"):
+            await c._inorbit_command_handler(
+                "customCommand", ["move_to_node", ["node_code", "HEAL-002-125"]], options
+            )
+        assert "InOrbit command move_to_node {'node_code': 'HEAL-002-125'}" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_nav_goal_logged_on_arrival(self, caplog):
+        c = self._make_stub()
+        options = {"result_function": lambda code, **kw: None}
+        with caplog.at_level("INFO", logger="inorbit_kuka_connector.src.connector"):
+            await c._inorbit_command_handler(
+                "navGoal", [{"x": 12.85, "y": 45.42, "theta": 0.0}], options
+            )
+        assert "InOrbit command navGoal (12.850, 45.420)" in caplog.text

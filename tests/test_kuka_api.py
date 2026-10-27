@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 import httpx
 import pytest
@@ -444,3 +445,49 @@ async def test_robot_query_keeps_short_timeout(api, httpx_mock):
     await api.robot_query("300")
     req = httpx_mock.get_request(url=f"{BASE_URL}/interfaces/api/amr/robotQuery")
     assert req.extensions["timeout"]["read"] == 10.0
+
+
+# -- Submit latency is logged ---------------------------------------------
+#
+# The Interface Manager answered a submit in 11.6 s on 2026-10-27, past the
+# InOrbit GUI's own wait; the number had to be dug out of the kuka-interface
+# container, whose log is kept for ten hours. The connector logs it itself.
+
+
+@pytest.mark.asyncio
+async def test_submit_move_mission_logs_duration(api, httpx_mock, caplog):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/submitMission",
+        json={"success": True},
+    )
+    with caplog.at_level("INFO", logger="inorbit_kuka_connector.src.kuka_api"):
+        _, mission_code = await api.submit_move_mission("1", "HEAL-002-125", "KMP 600P")
+    assert re.search(
+        rf"submitMission {mission_code} \(HEAL-002-125\) answered in \d+\.\d s: success",
+        caplog.text,
+    )
+
+
+@pytest.mark.asyncio
+async def test_submit_mission_body_logs_duration_and_rejection(api, httpx_mock, caplog):
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/interfaces/api/amr/submitMission",
+        json={"success": False, "message": "robot busy"},
+    )
+    with caplog.at_level("INFO", logger="inorbit_kuka_connector.src.kuka_api"):
+        await api.submit_mission({"missionCode": "X-1", "missionData": [{"position": "N1"}]})
+    assert re.search(
+        r"submitMission X-1 \(N1\) answered in \d+\.\d s: rejected \(robot busy\)",
+        caplog.text,
+    )
+
+
+@pytest.mark.asyncio
+async def test_submit_mission_logs_duration_when_it_times_out(api, httpx_mock, caplog):
+    """The 2026-10-15 case: an httpx timeout with an empty message. Log how long
+    we waited and what failed, then let the caller see the exception."""
+    httpx_mock.add_exception(httpx.ReadTimeout("Read timed out"))
+    with caplog.at_level("INFO", logger="inorbit_kuka_connector.src.kuka_api"):
+        with pytest.raises(httpx.ReadTimeout):
+            await api.submit_mission({"missionCode": "X-2", "missionData": [{"position": "N1"}]})
+    assert re.search(r"submitMission X-2 \(N1\) failed after \d+\.\d s: ReadTimeout", caplog.text)
